@@ -1,0 +1,23 @@
+****************FILES AND DIRECTORIES**************** 
+master_file_name; master_file_tree.txt
+master_dir; ./samples/
+logpath; ./output_files/Default/
+
+****************CNN ARCHITECTURE SPECIFICATIONS**************** 
+tfhub_module; https://tfhub.dev/google/imagenet/resnet_v2_152/feature_vector/1 
+add_fc; [1024, 128] 
+hub_num_retrain; 0 
+
+****************TRAINING SPECIFICATIONS**************** 
+train_batch_size; 300
+how_many_training_steps; 1
+learning_rate; 1e-4
+val_percentage; 25
+how_often_validation; 1
+optimizer_ind; Adam
+loss_ind; contrastive_thres
+
+****************SIMILARITY SPECIFICATIONS**************** 
+similarity_thresh; 1
+label_weights; [1, 1, 1, 1]
+relevant_labels; #place, #timespan, #material, #technique

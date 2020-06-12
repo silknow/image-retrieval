@@ -1,0 +1,8 @@
+****************FILES AND DIRECTORIES**************** 
+model_path; ./output_files/Default/
+master_file_tree; master_file_tree.txt
+master_dir_tree; ./samples/
+savepath; ./output_files/Default/
+
+****************SIMILARITY SPECIFICATIONS**************** 
+relevant_labels; #place, #timespan, #material, #technique

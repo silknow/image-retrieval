@@ -1,0 +1,10 @@
+**************INPUT FILES AND OPTIONS*****************
+csvfile; ./samples/total_post_08_June_2020.csv
+
+**************PATH OF OUTPUT FILES*****************
+imgsavepath; ./samples/data/
+
+**************DATASET MISC***************** 
+minnumsamples; 150
+retaincollections; garin, imatex, joconde, mad, mfa, risd
+
