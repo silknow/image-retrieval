@@ -7,8 +7,8 @@ Created on Fri Feb 21 14:19:18 2020
 
 import sys
 sys.path.insert(0,'./src') 
-import silk_retrieval_functions as srf
+import silknow_image_retrieval as sir
 
 if __name__ == '__main__':
     configFile = sys.argv[1]
-    srf.build_kDTree_configfile(configFile)
+    sir.build_kDTree_configfile(configFile)

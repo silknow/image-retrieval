@@ -7,8 +7,8 @@ Created on Mon Jan 20 12:20:00 2020
 
 import sys
 sys.path.insert(0,'./src') 
-import silk_retrieval_functions as srf
+import silknow_image_retrieval as sir
 
 if __name__ == '__main__':
     configFile = sys.argv[1]
-    srf.create_dataset_configfile(configFile)
+    sir.create_dataset_configfile(configFile)
