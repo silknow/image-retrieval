@@ -266,6 +266,10 @@ def create_dataset(csvfile,
     dataChunkList = np.array_split(image_data, 5)
     variable_list = ["place", "timespan", "material", "technique", "depiction", "museum"]
 
+    # get complete samples
+    complete_mask = data.loc[data["nancount"] == 0]
+    complete_mask.to_csv("complete.csv")
+
     for i, chunk in enumerate(dataChunkList):
         collection = open(MasterfilePath + "collection_" + str(i + 1) + ".txt", "w+")
         #        string = ["#"+name+"\t" for name in list(image_data)[1:]]
@@ -309,9 +313,9 @@ def create_dataset(csvfile,
             print("\n")
 
         print("\n")
-
-    # save pandas dataframe to csv
-    image_data.to_csv("image_data.csv")
+    #
+    # # save pandas dataframe to csv
+    # image_data.to_csv("image_data.csv")
 
     ######### Different to D4.6 ################
 
@@ -363,17 +367,16 @@ def create_config_file_train_model(masterfile_path, variable_list):
     config.writelines(["logpath; " + r"./output_files/Default/" + "\n"])
 
     config.writelines(["\n****************CNN ARCHITECTURE SPECIFICATIONS**************** \n"])
-    config.writelines(["tfhub_module; https://tfhub.dev/google/imagenet/resnet_v2_152/feature_vector/1 \n"])
     config.writelines(["add_fc; [1024, 128] \n"])
     config.writelines(["hub_num_retrain; 0 \n"])
 
     config.writelines(["\n****************TRAINING SPECIFICATIONS**************** \n"])
-    config.writelines(["train_batch_size; 300\n"])
-    config.writelines(["how_many_training_steps; 20\n"])
+    config.writelines(["train_batch_size; 150\n"])
+    config.writelines(["how_many_training_steps; 200\n"])
     config.writelines(["learning_rate; 1e-4\n"])
     config.writelines(["val_percentage; 25\n"])
-    config.writelines(["how_often_validation; 1\n"])
-    config.writelines(["loss_ind; soft_triplet\n"])
+    config.writelines(["how_often_validation; 10\n"])
+    config.writelines(["loss_ind; soft_contrastive_incomp_loss\n"])
 
     config.writelines(["\n****************SIMILARITY SPECIFICATIONS**************** \n"])
     config.writelines(["relevant_variables; "])
@@ -382,11 +385,11 @@ def create_config_file_train_model(masterfile_path, variable_list):
     config.writelines(["#%s\n" % str(variable_list[-2])])
 
     config.writelines(["\n****************DATA AUGMENTATION SPECIFICATIONS**************** \n"])
-    config.writelines(["random_crop; [1, 1]\n"])
-    config.writelines(["random_rotation90; False\n"])
-    config.writelines(["gaussian_noise; 0.0\n"])
-    config.writelines(["flip_left_right; False\n"])
-    config.writelines(["flip_up_down; False\n"])
+    config.writelines(["random_crop; [0.7, 1]\n"])
+    config.writelines(["random_rotation90; True\n"])
+    config.writelines(["gaussian_noise; 0.01\n"])
+    config.writelines(["flip_left_right; True\n"])
+    config.writelines(["flip_up_down; True\n"])
     config.close()
 
 
@@ -424,7 +427,7 @@ def create_config_file_get_kNN(masterfile_path):
     config.writelines(["savepath; " + r"./output_files/Default/" + "\n"])
 
     config.writelines(["\n****************SIMILARITY SPECIFICATIONS**************** \n"])
-    config.writelines(["num_neighbors; 5\n"])
+    config.writelines(["num_neighbors; 6\n"])
     config.writelines(["bool_labeled_input; True\n"])
     config.close()
 
@@ -453,31 +456,30 @@ def create_config_file_crossvalidation(masterfile_path, variable_list):
     config.writelines(["logpath; " + r"./output_files/Default/" + "\n"])
 
     config.writelines(["\n****************CNN ARCHITECTURE SPECIFICATIONS**************** \n"])
-    config.writelines(["tfhub_module; https://tfhub.dev/google/imagenet/resnet_v2_152/feature_vector/1 \n"])
     config.writelines(["add_fc; [1024, 128] \n"])
     config.writelines(["hub_num_retrain; 0 \n"])
 
     config.writelines(["\n****************TRAINING SPECIFICATIONS**************** \n"])
-    config.writelines(["train_batch_size; 100\n"])
-    config.writelines(["how_many_training_steps; 40\n"])
+    config.writelines(["train_batch_size; 150\n"])
+    config.writelines(["how_many_training_steps; 200\n"])
     config.writelines(["learning_rate; 1e-4\n"])
     config.writelines(["val_percentage; 25\n"])
-    config.writelines(["how_often_validation; 1\n"])
-    config.writelines(["loss_ind; soft_triplet\n"])
+    config.writelines(["how_often_validation; 10\n"])
+    config.writelines(["loss_ind; soft_contrastive_incomp_loss\n"])
 
     config.writelines(["\n****************SIMILARITY SPECIFICATIONS**************** \n"])
-    config.writelines(["num_neighbors; 5\n"])
+    config.writelines(["num_neighbors; 6\n"])
     config.writelines(["relevant_variables; "])
     for variable in variable_list[0:-2]:
         config.writelines(["#%s, " % str(variable)])
     config.writelines(["#%s\n" % str(variable_list[-2])])
 
     config.writelines(["\n****************DATA AUGMENTATION SPECIFICATIONS**************** \n"])
-    config.writelines(["random_crop; [1, 1]\n"])
-    config.writelines(["random_rotation90; False\n"])
-    config.writelines(["gaussian_noise; 0.0\n"])
-    config.writelines(["flip_left_right; False\n"])
-    config.writelines(["flip_up_down; False\n"])
+    config.writelines(["random_crop; [0.7, 1]\n"])
+    config.writelines(["random_rotation90; True\n"])
+    config.writelines(["gaussian_noise; 0.01\n"])
+    config.writelines(["flip_left_right; True\n"])
+    config.writelines(["flip_up_down; True\n"])
     config.close()
 
 

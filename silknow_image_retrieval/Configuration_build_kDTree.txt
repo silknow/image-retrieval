@@ -5,4 +5,4 @@ master_dir_tree; ./samples/
 savepath; ./output_files/Default/
 
 ****************SIMILARITY SPECIFICATIONS**************** 
-relevant_labels; #place, #timespan, #material, #technique
+relevant_variables; #place, #timespan, #material, #technique, #depiction

@@ -6,5 +6,5 @@ model_path; ./output_files/Default/
 savepath; ./output_files/Default/
 
 ****************SIMILARITY SPECIFICATIONS**************** 
-num_neighbors; 5
+num_neighbors; 6
 bool_labeled_input; True

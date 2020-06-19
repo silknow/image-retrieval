@@ -4,20 +4,23 @@ master_dir; ./samples/
 logpath; ./output_files/Default/
 
 ****************CNN ARCHITECTURE SPECIFICATIONS**************** 
-tfhub_module; https://tfhub.dev/google/imagenet/resnet_v2_152/feature_vector/1 
 add_fc; [1024, 128] 
 hub_num_retrain; 0 
 
 ****************TRAINING SPECIFICATIONS**************** 
-train_batch_size; 300
-how_many_training_steps; 1
+train_batch_size; 150
+how_many_training_steps; 200
 learning_rate; 1e-4
 val_percentage; 25
-how_often_validation; 1
-optimizer_ind; Adam
-loss_ind; contrastive_thres
+how_often_validation; 10
+loss_ind; soft_contrastive_incomp_loss
 
 ****************SIMILARITY SPECIFICATIONS**************** 
-similarity_thresh; 1
-label_weights; [1, 1, 1, 1]
-relevant_labels; #place, #timespan, #material, #technique
+relevant_variables; #place, #timespan, #material, #technique, #depiction
+
+****************DATA AUGMENTATION SPECIFICATIONS**************** 
+random_crop; [0.7, 1]
+random_rotation90; True
+gaussian_noise; 0.01
+flip_left_right; True
+flip_up_down; True
