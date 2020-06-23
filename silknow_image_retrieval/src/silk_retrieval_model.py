@@ -33,9 +33,10 @@ CHECKPOINT_NAME = 'model.ckpt'
 
 
 def create_dataset(csvfile,
-                   imgsavepath = "../data/",
+                   imgsavepath = "./samples/data/",
                    minnumsamples = 150,
-                   retaincollections = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd']):
+                   retaincollections = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd'],
+                   allow_incomplete = True):
     r"""Creates the dataset for the CNN.
 
     :Arguments\::
@@ -52,7 +53,9 @@ def create_dataset(csvfile,
             List of strings that defines the museums/collections that
             are be used. Data from museums/collections
             not stated in this list will be omitted.
-
+        :allow_incomplete (*boolean*)\::
+            Variable that states whether samples with unknown annotations for at least
+            one variable are allowed (True) or not (False) to be in the resulting dataset.
 
     :Returns\::
         No returns. This function produces all files needed for running the software.
@@ -144,6 +147,10 @@ def create_dataset(csvfile,
     # count NaNs
     variable_list = ["timespan", "place", "material", "technique", "depiction"]
     data['nancount'] = data[variable_list].isnull().sum(axis=1)
+
+    # reject incomplete samples if desired
+    if not allow_incomplete:
+        data = data[data.nancount == 0]
 
     # omit all records from museums with too many non-fabrics...
     # oklist = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd']
@@ -250,6 +257,13 @@ def create_dataset(csvfile,
     # Omit again records with only missing annotations
     data = data[data.nancount < len(variable_list)]
 
+    # reject (again) incomplete samples if desired
+    if not allow_incomplete:
+        data = data[data.nancount == 0]
+
+    # check if still samples in data frame, assertion otherwise
+    assert not data.empty, "No samples found for the current requirements."
+
     # re-name labels to not include any spaces
     for c in variable_list:
         label_list = data[c].unique()
@@ -266,9 +280,9 @@ def create_dataset(csvfile,
     dataChunkList = np.array_split(image_data, 5)
     variable_list = ["place", "timespan", "material", "technique", "depiction", "museum"]
 
-    # get complete samples
-    complete_mask = data.loc[data["nancount"] == 0]
-    complete_mask.to_csv("complete.csv")
+    # # get complete samples
+    # complete_mask = data.loc[data["nancount"] == 0]
+    # complete_mask.to_csv("complete.csv")
 
     for i, chunk in enumerate(dataChunkList):
         collection = open(MasterfilePath + "collection_" + str(i + 1) + ".txt", "w+")
@@ -289,11 +303,6 @@ def create_dataset(csvfile,
 
         collection.close()
 
-    # # Write collection files to masterfile and save it in the same path
-    # master = open(MasterfilePath + "Masterfile.txt", "w+")
-    # for i in range(len(dataChunkList)):
-    #     master.writelines(["collection_"] + [str(i + 1)] + [".txt\n"])
-    # master.close()
 
     # Print label statistics
     classStructures = {}
@@ -313,7 +322,7 @@ def create_dataset(csvfile,
             print("\n")
 
         print("\n")
-    #
+
     # # save pandas dataframe to csv
     # image_data.to_csv("image_data.csv")
 

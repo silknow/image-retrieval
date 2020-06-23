@@ -7,4 +7,5 @@ imgsavepath; ./samples/data/
 **************DATASET MISC***************** 
 minnumsamples; 150
 retaincollections; garin, imatex, joconde, mad, mfa, risd
+allow_incomplete; True
 

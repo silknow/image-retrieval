@@ -11,7 +11,8 @@ import numpy as np
 def create_dataset_parameter(csvfile,
                              imgsavepath = "../data/",
                              minnumsamples = 150,
-                             retaincollections = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd']):
+                             retaincollections = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd'],
+                             allow_incomplete = True):
     r"""Sets all dataset utilities up.
 
     :Arguments\::
@@ -28,6 +29,9 @@ def create_dataset_parameter(csvfile,
             List of strings that defines the museums/collections that
             are used. Data from museums/collections
             not stated in this list will be omitted.
+        :allow_incomplete (*boolean*)\::
+            Variable that states whether samples with unknown annotations for at least
+            one variable are allowed (True) or not (False) to be in the resulting dataset.
 
     :Returns\::
         No returns. This function produces all files (data files as well as
@@ -38,7 +42,8 @@ def create_dataset_parameter(csvfile,
     srm.create_dataset(csvfile,
                        imgsavepath,
                        minnumsamples,
-                       retaincollections)
+                       retaincollections,
+                       allow_incomplete)
 
 
 def create_dataset_configfile(configfile):
@@ -59,12 +64,14 @@ def create_dataset_configfile(configfile):
     (csvfile,
      imgsavepath,
      minnumsamples,
-     retaincollections) =  srm.read_configfile_create_dataset(configfile)
+     retaincollections,
+     allow_incomplete) = srm.read_configfile_create_dataset(configfile)
 
     srm.create_dataset(csvfile,
                        imgsavepath,
                        minnumsamples,
-                       retaincollections)
+                       retaincollections,
+                       allow_incomplete)
 
 
 def train_model_parameter(master_file, master_dir, logpath,
