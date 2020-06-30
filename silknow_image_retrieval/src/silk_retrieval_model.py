@@ -16,6 +16,7 @@ import urllib
 import urllib.request
 import matplotlib.pyplot as plt
 import cv2
+import collections
 
 from shutil import copy
 
@@ -28,6 +29,7 @@ from tqdm import tqdm
 sys.path.insert(0, '../../')
 sys.path.insert(0, '../')
 sys.path.insert(0, './src/')
+# import SILKNOW_WP4_library as sn_func
 from . import SILKNOW_WP4_library as sn_func
 CHECKPOINT_NAME = 'model.ckpt'
 
@@ -36,7 +38,7 @@ def create_dataset(csvfile,
                    imgsavepath = "./samples/data/",
                    minnumsamples = 150,
                    retaincollections = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd'],
-                   allow_incomplete = True):
+                   num_labeled = 1):
     r"""Creates the dataset for the CNN.
 
     :Arguments\::
@@ -53,9 +55,13 @@ def create_dataset(csvfile,
             List of strings that defines the museums/collections that
             are be used. Data from museums/collections
             not stated in this list will be omitted.
-        :allow_incomplete (*boolean*)\::
-            Variable that states whether samples with unknown annotations for at least
-            one variable are allowed (True) or not (False) to be in the resulting dataset.
+        :num_labeled (*int*)\::
+            Variable that indicates how many labels per sample should be available so that
+            a sample is a valid sample and thus, part of the created dataset. The maximum
+            number of num_labeled is 5, as five semantic variables are considered in the
+            current implementation of this function. Choosing the maximum number means
+            that only complete samples form the dataset. The value of num_labeled must not
+            be smaller than 0.
 
     :Returns\::
         No returns. This function produces all files needed for running the software.
@@ -148,17 +154,13 @@ def create_dataset(csvfile,
     variable_list = ["timespan", "place", "material", "technique", "depiction"]
     data['nancount'] = data[variable_list].isnull().sum(axis=1)
 
-    # reject incomplete samples if desired
-    if not allow_incomplete:
-        data = data[data.nancount == 0]
-
     # omit all records from museums with too many non-fabrics...
     # oklist = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd']
     oklist = retaincollections
     data = data[data.museum.isin(oklist)]
 
-    # ... as well as records with no information
-    data = data[data.nancount < len(variable_list)]
+    # ... as well as records with too few information
+    data = data[data.nancount < len(variable_list) - num_labeled +1]
 
     # Download der Daten
     # if download:
@@ -254,12 +256,8 @@ def create_dataset(csvfile,
     # count NaNs
     data['nancount'] = data[variable_list].isnull().sum(axis=1)
 
-    # Omit again records with only missing annotations
-    data = data[data.nancount < len(variable_list)]
-
-    # reject (again) incomplete samples if desired
-    if not allow_incomplete:
-        data = data[data.nancount == 0]
+    # reject (again) incomplete samples with too few labels
+    data = data[data.nancount < len(variable_list) - num_labeled + 1]
 
     # check if still samples in data frame, assertion otherwise
     assert not data.empty, "No samples found for the current requirements."
@@ -272,12 +270,55 @@ def create_dataset(csvfile,
                 changed_label = l.replace(" ", "_")
                 data = data.replace(l, changed_label)
 
+
+    # Make sure that images from one object will only show up in one chunk
+    var_list = ["place", "timespan", "material", "technique", "depiction"]
+
+    # read data and get 5 chunks
+    # images from one object will only show up in one chunk
+    image_data = data.sample(frac=1)
+    unique_objects = list(image_data.obj.unique())
+    random.shuffle(unique_objects)
+    chunked_objects = [unique_objects[i::5] for i in range(5)]
+
+    # get all unique class labels
+    unique_labels_dict = {}
+    for var in var_list:
+        unique_labels_dict[var] = image_data[var].unique()
+
+    # check that all class labels appear in every chunk
+    random_chunk_split_is_ok = True
+    try_counter = 0
+    dataChunkList = []
+    while True:
+        if try_counter >= 10:
+            print("No valid data split was found in 10 tries, aborting...")
+            assert False, ""
+
+        for chunk in chunked_objects:
+            df_chunk = image_data[image_data.obj.isin(chunk)]
+            for var in var_list:
+                unique_labels_in_chunk_var = df_chunk[var].unique()
+                class_labels_are_matching = collections.Counter(unique_labels_in_chunk_var) == collections.Counter(
+                    unique_labels_dict[var])
+                random_chunk_split_is_ok = random_chunk_split_is_ok and class_labels_are_matching
+            dataChunkList.append(df_chunk)
+
+        if not random_chunk_split_is_ok:
+            try_counter += 1
+            print("Unlucky data split, retrying with new random split...")
+            random.shuffle(unique_objects)
+            chunked_objects = [unique_objects[i::5] for i in range(5)]
+            dataChunkList = []
+        else:
+            break
+
     # print statistics
     # [print(data[var].value_counts(dropna=False)) for var in data.columns]
 
     # create collection files
     image_data = data.sample(frac=1)
-    dataChunkList = np.array_split(image_data, 5)
+    # dataChunkList = np.array_split(image_data, 5)
     variable_list = ["place", "timespan", "material", "technique", "depiction", "museum"]
 
     # # get complete samples
@@ -1581,6 +1622,13 @@ def read_configfile_create_dataset(configfile):
             List of strings that defines the museums/collections that
             are be used. Data from museums/collections
             not stated in this list will be omitted.
+        :num_labeled (*int*)\::
+            Variable that indicates how many labels per sample should be available so that
+            a sample is a valid sample and thus, part of the created dataset. The maximum
+            number of num_labeled is 5, as five semantic variables are considered in the
+            current implementation of this function. Choosing the maximum number means
+            that only complete samples form the dataset. The value of num_labeled must not
+            be smaller than 0.
             
     """""
     control_id = open(configfile, 'r', encoding='utf-8')
@@ -1595,10 +1643,11 @@ def read_configfile_create_dataset(configfile):
             retaincollections = variable.split(';')[1]\
                     .replace(' ', '').replace('\n', '')\
                     .replace('\t', '').split(',')
-    return(csvfile,
-           imgsavepath,
-           minnumsamples,
-           retaincollections)
+        if variable.split(';')[0] == 'num_labeled':
+            num_labeled = np.int(variable.split(';')[1].strip())
+
+    return(csvfile, imgsavepath, minnumsamples, retaincollections,
+           num_labeled)
 
 
 def read_configfile_crossvalidation(configfile):
@@ -2714,6 +2763,7 @@ def _get_similarity_degree(input_labels_l, input_labels_r,
 
 def _get_triplet_mask_label_similarity(MTL_labels, label_weight_tensor):
     r"""Estimates valid triplets.
+
     
     A triplet (i, j, k) is valid if:
         - i, j, k are distinct

@@ -28,7 +28,8 @@ all_reqs = ['#Dev/Deployment',
 			'tensorflow-hub==0.6.0',
 			'matplotlib',
 			'sklearn',
-            'scipy']
+            'scipy',
+            'collections']
 
 install_requires = [x.strip() for x in all_reqs if 'git+' not in x]
 dependency_links = [x.strip().replace('git+', '') for x in all_reqs if x.startswith('git+')]

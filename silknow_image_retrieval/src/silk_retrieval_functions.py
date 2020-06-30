@@ -4,6 +4,7 @@ Created on Mon Jan 20 14:07:11 2020
 
 @author: clermont, dorozynski
 """
+# import silk_retrieval_model as srm
 from . import silk_retrieval_model as srm
 import numpy as np
 
@@ -12,7 +13,7 @@ def create_dataset_parameter(csvfile,
                              imgsavepath = "../data/",
                              minnumsamples = 150,
                              retaincollections = ['garin', 'imatex', 'joconde', 'mad', 'mfa', 'risd'],
-                             allow_incomplete = True):
+                             num_labeled = 1):
     r"""Sets all dataset utilities up.
 
     :Arguments\::
@@ -29,9 +30,14 @@ def create_dataset_parameter(csvfile,
             List of strings that defines the museums/collections that
             are used. Data from museums/collections
             not stated in this list will be omitted.
-        :allow_incomplete (*boolean*)\::
-            Variable that states whether samples with unknown annotations for at least
-            one variable are allowed (True) or not (False) to be in the resulting dataset.
+        :num_labeled (*int*)\::
+            Variable that indicates how many labels per sample should be available so that
+            a sample is a valid sample and thus, part of the created dataset. The maximum
+            number of num_labeled is 5, as five semantic variables are considered in the
+            current implementation of this function. Choosing the maximum number means
+            that only complete samples form the dataset. The value of num_labeled must not
+            be smaller than 0.
+
 
     :Returns\::
         No returns. This function produces all files (data files as well as
@@ -43,7 +49,7 @@ def create_dataset_parameter(csvfile,
                        imgsavepath,
                        minnumsamples,
                        retaincollections,
-                       allow_incomplete)
+                       num_labeled)
 
 
 def create_dataset_configfile(configfile):
@@ -65,13 +71,13 @@ def create_dataset_configfile(configfile):
      imgsavepath,
      minnumsamples,
      retaincollections,
-     allow_incomplete) = srm.read_configfile_create_dataset(configfile)
+     num_labeled) =  srm.read_configfile_create_dataset(configfile)
 
     srm.create_dataset(csvfile,
                        imgsavepath,
                        minnumsamples,
                        retaincollections,
-                       allow_incomplete)
+                       num_labeled)
 
 
 def train_model_parameter(master_file, master_dir, logpath,
