@@ -18,18 +18,22 @@ def create_dataset_parameter(csvfile,
 
     :Arguments\::
         :csvfile (*string*)\::
-            Filename (including the path) of the .csv file that represents all data used
-            for training and testing the classifier.
+            Filename (including the path) of the .csv file containing information
+            (like the deeplink) about the data in the SILKNOW knowledge graph.
         :imgsavepath (*string*)\::
-            Path to where the images will be downloaded. This path has
-            to be relative to the main software folder.
+            The path (without filename) that will contain the downloaded images.
+            The original images will be in the folder "img_unscaled" in that directory
+            and the rescaled images will be in the folder "img". It has to be relative
+            to the current working directory.
         :minnumsaples (*int*)\::
-            Minimum number of samples for each class. Classes with fewer
-            occurences will be ignored and set to unknown.
+            The minimum number of samples that should occur for a single class.
+            Classes with fewer samples will not be considered.
         :retaincollections (*list*)\::
-            List of strings that defines the museums/collections that
-            are used. Data from museums/collections
-            not stated in this list will be omitted.
+            A list containing the museums/collections in the knowledge graph that
+            shall be considered for the data set creation. Data from museums/collections
+            not stated in this list will be omitted. Possible values in the list according
+            to EURECOM’s export from the SILKNOW knowledge graph are: cer, garin, imatex,
+            joconde, mad, met, mfa, mtmad, risd, unipa, vam.
         :num_labeled (*int*)\::
             Variable that indicates how many labels per sample should be available so that
             a sample is a valid sample and thus, part of the created dataset. The maximum
@@ -217,7 +221,7 @@ def build_kDTree_parameter(model_path, master_file_tree, master_dir_tree, releva
     :Arguments\::
         :model_path (*string*):
             Path (without filename) to a folder containing a pre-trained network. Only one pre-trained
-            model should be stored in that model folder. It refers to the variable logpath in the
+            model should be stored in that model folder. It is exactly the path defined in the variable logpath in the
             function 'train_model_parameter'.
         :master_file_tree (*string*)\::
             The name of the master file that shall be used.
