@@ -1332,10 +1332,10 @@ class SilkRetriever:
             if self.num_fine_tune_layers == 0:
                 grad_var_list = optimizer.compute_gradients(loss,
                                                             tf.compat.v1.trainable_variables())
-                for (grad, var) in grad_var_list:
-                    tf.compat.v1.summary.histogram(var.name.replace(':', '_') + '/gradient',
-                                                   grad)
-                    tf.compat.v1.summary.histogram(var.op.name, var)
+                # for (grad, var) in grad_var_list:
+                #     tf.compat.v1.summary.histogram(var.name.replace(':', '_') + '/gradient',
+                #                                    grad)
+                #     tf.compat.v1.summary.histogram(var.op.name, var)
 
                 train_step = optimizer.apply_gradients(grad_var_list)
                 variable_list = tf.compat.v1.trainable_variables()

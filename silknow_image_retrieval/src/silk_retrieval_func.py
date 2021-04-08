@@ -146,7 +146,6 @@ def train_model_parameter(master_file_name, master_file_dir, master_file_rules_n
         :loss_ind (*string*)\::
             The loss function that shall be utilized to estimate the network
             performance during training. Possible options:
-                - 'contrastive': a contrastive loss with multi-variable based semantic similarity
                 - 'triplet': a contrastive loss with multi-label multi-variable based semantic similarity
                 - 'colour': a colour distribution-based similarity
                 - 'rule': a cultural heritage domain expert rule-based similarity
@@ -242,15 +241,30 @@ def train_model_parameter(master_file_name, master_file_dir, master_file_rules_n
     sr.learning_rate = learning_rate
     sr.validation_percentage = validation_percentage
     sr.how_often_validation = how_often_validation
-    sr.loss_ind = loss_ind
 
     sr.relevant_variables = relevant_variables
     sr.variable_weights = variable_weights
 
-    sr.loss_weight_semantic = loss_weight_semantic
-    sr.loss_weight_rules = loss_weight_rules
-    sr.loss_weight_colour = loss_weight_colour
-    sr.loss_weight_augment = loss_weight_augment
+    if loss_ind == "combined_similarity_loss":
+        sr.loss_ind = loss_ind
+        sr.loss_weight_semantic = loss_weight_semantic
+        sr.loss_weight_rules = loss_weight_rules
+        sr.loss_weight_colour = loss_weight_colour
+        sr.loss_weight_augment = loss_weight_augment
+    else:
+        sr.loss_ind = "combined_similarity_loss"
+        sr.loss_weight_semantic = 0.
+        sr.loss_weight_rules = 0.
+        sr.loss_weight_colour = 0.
+        sr.loss_weight_augment = 0.
+        if loss_ind == "triplet":
+            sr.loss_weight_semantic = 1.
+        elif loss_ind == "colour":
+            sr.loss_weight_colour = 1.
+        elif loss_ind == "rule":
+            sr.loss_weight_rules = 1.
+        elif loss_ind == "self_augment":
+            sr.loss_weight_augment = 1.
 
     sr.semantic_batch_size_fraction = semantic_batch_size_fraction
     sr.rules_batch_size_fraction = rules_batch_size_fraction
@@ -517,7 +531,6 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
         :loss_ind (*string*)\::
             The loss function that shall be utilized to estimate the network
             performance during training. Possible options:
-                - 'contrastive': a contrastive loss with multi-variable based semantic similarity
                 - 'triplet': a contrastive loss with multi-label multi-variable based semantic similarity
                 - 'colour': a colour distribution-based similarity
                 - 'rule': a cultural heritage domain expert rule-based similarity
@@ -622,7 +635,6 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
     sr.learning_rate = learning_rate
     sr.validation_percentage = validation_percentage
     sr.how_often_validation = how_often_validation
-    sr.loss_ind = loss_ind
 
     sr.relevant_variables = relevant_variables
     sr.variable_weights = variable_weights
@@ -630,10 +642,26 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
 
     sr.num_neighbors = num_neighbors
 
-    sr.loss_weight_semantic = loss_weight_semantic
-    sr.loss_weight_rules = loss_weight_rules
-    sr.loss_weight_colour = loss_weight_colour
-    sr.loss_weight_augment = loss_weight_augment
+    if loss_ind == "combined_similarity_loss":
+        sr.loss_ind = loss_ind
+        sr.loss_weight_semantic = loss_weight_semantic
+        sr.loss_weight_rules = loss_weight_rules
+        sr.loss_weight_colour = loss_weight_colour
+        sr.loss_weight_augment = loss_weight_augment
+    else:
+        sr.loss_ind = "combined_similarity_loss"
+        sr.loss_weight_semantic = 0.
+        sr.loss_weight_rules = 0.
+        sr.loss_weight_colour = 0.
+        sr.loss_weight_augment = 0.
+        if loss_ind == "triplet":
+            sr.loss_weight_semantic = 1.
+        elif loss_ind == "colour":
+            sr.loss_weight_colour = 1.
+        elif loss_ind == "rule":
+            sr.loss_weight_rules = 1.
+        elif loss_ind == "self_augment":
+            sr.loss_weight_augment = 1.
 
     sr.semantic_batch_size_fraction = semantic_batch_size_fraction
     sr.rules_batch_size_fraction = rules_batch_size_fraction

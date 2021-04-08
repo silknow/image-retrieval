@@ -13,7 +13,8 @@ class SampleHandler:
 
     def __init__(self, masterfile_dir, masterfile_name, relevant_variables, validation_percentage,
                  image_based_samples=None, sampleType=None, multiLabelsListOfVariables=None,
-                 bool_unlabeled_dataset_rules = None, max_num_classes_per_variable_default=None):
+                 bool_unlabeled_dataset_rules = None, max_num_classes_per_variable_default=None,
+                 boolMultiLabelClassification = False):
         """Initializes an object of this class and loads all training and validation images into RAM.
 
             :Arguments:
@@ -61,6 +62,7 @@ class SampleHandler:
         self.masterfile_name = masterfile_name
         self.validation_percentage = validation_percentage
         self.multiLabelsListOfVariables = multiLabelsListOfVariables
+        self.boolMultiLabelClassification = boolMultiLabelClassification
 
         if sampleType is None:
             self.sampleType = "image" if image_based_samples else "record"
@@ -88,8 +90,10 @@ class SampleHandler:
         self.classCountDict = self.getClassCountDictFromCollectionDict(collections_dict_MTL,
                                                                        bool_unlabeled_dataset_rules)
         self.taskDict = self.getTaskDictFromCollectionDict(collections_dict_MTL)
+        self.getDistinctSingleClassesPerTask()
 
         if not self.multiLabelsListOfVariables is None:
+
             if bool_unlabeled_dataset_rules is None:
                 self.max_num_classes_per_variable = self.find_max_num_classes_per_variable()
             else:
@@ -109,6 +113,22 @@ class SampleHandler:
         self.load_image_data(collections_dict_MTL_train, image_2_label_dict_train,
                              collections_dict_MTL_validation, image_2_label_dict_validation)
 
+    def getDistinctSingleClassesPerTask(self):
+        classPerTask = {}
+        numClassPerTask = {}
+        for task in self.taskDict.keys():
+            distinctClasses = []
+            for cl in self.taskDict[task]:
+                if "___" not in cl:
+                    distinctClasses.append(cl)
+                else:
+                    for singleLabel in cl.split("___"):
+                        distinctClasses.append(singleLabel)
+            classPerTask[task] = list(np.unique(distinctClasses))
+            numClassPerTask[task] = len(np.unique(distinctClasses))
+        self.classPerTaskDict = classPerTask
+        self.numClassPerTask = numClassPerTask
+
     def find_max_num_classes_per_variable(self):
         max_num_classes_per_variable = 0
         # print(self.taskDict)
@@ -124,7 +144,6 @@ class SampleHandler:
                     if class_label not in class_names:
                         class_names.append(class_label)
             max_num_classes_per_variable = max(max_num_classes_per_variable, len(class_names))
-            # print(task, max_num_classes_per_variable)
         return max_num_classes_per_variable
 
     def initializeIndexLists(self, image_2_label_dict_train, image_2_label_dict_validation):
@@ -207,6 +226,8 @@ class SampleHandler:
             self.nextUnusedValidationSampleIndex = 0
             self.epochsCompletedValidation += 1
             random.shuffle(self.indexListValidation)
+        # else:
+        #     print("no shuffle")
 
         return indexValid
 
@@ -428,6 +449,7 @@ class SampleHandler:
         ground_truths = []
         filenames = []
         all_image_index_train = []
+        all_image_index_validation = []
 
         # Retrieve a random sample of raw JPEG data
         for unused_i in range(how_many):
@@ -443,14 +465,16 @@ class SampleHandler:
                     assert self.amountOfTrainingSamples > how_many, "select a smaller train batch size"
             if purpose == 'valid':
                 image_index = self.getValidIndex()
+                if self.amountOfValidationSamples>how_many:
+                    while image_index in all_image_index_validation:
+                        image_index = self.getValidIndex()
+                    all_image_index_validation.append(image_index)
+                else:
+                    assert self.amountOfValidationSamples > how_many, "select a smaller batch size"
 
             image_name = list(self.data_all[purpose].keys())[image_index]
             temp_ground_truth = self.data_all[purpose][image_name][
                 'labels']  # order of labels acc keys in self.taskDict
-            # if not self.multiLabelsListOfVariables is None:
-            #     temp_ground_truth = self.convertGroundTruthToIndiceMatrix(temp_ground_truth)
-                # print(temp_ground_truth)
-            # print(np.shape(temp_ground_truth))
             image_data = session.run(decoded_image_tensor,
                                      {jpeg_data_tensor: self.data_all[purpose][image_name]['data']})
             all_images.append(image_data)
@@ -459,7 +483,11 @@ class SampleHandler:
         # print(np.shape(ground_truths))
         if self.multiLabelsListOfVariables is None:
             ground_truths = tuple(zip(*ground_truths))
-        # print(np.shape(ground_truths))
+        # arrange gt for multi-label classification here
+        if self.boolMultiLabelClassification:
+            ground_truths = tuple(zip(*ground_truths))
+
+        # print(len(all_image_index_validation), how_many)
         return all_images, ground_truths, filenames
 
     def get_random_samples_mixed(self, how_many, purpose, session,
@@ -504,21 +532,50 @@ class SampleHandler:
         converted_ground_truth = []
         for task_ind, task in enumerate(self.taskDict.keys()):
             if task in self.multiLabelsListOfVariables:
-                list_of_multilabel_ind = [ind for ind, name_str in enumerate(self.taskDict[task]) if "___" in name_str]
-                if temp_ground_truth[task_ind] in list_of_multilabel_ind:
-                    converted_label = np.zeros(self.max_num_classes_per_variable)
-                    for single_label in self.taskDict[task][temp_ground_truth[task_ind]].split("___"):
-                        temp_unconverted = list(self.taskDict[task]).index(single_label)
-                        temp_converted = self.get_one_hot_label(indice=temp_unconverted,
-                                                                depth=self.max_num_classes_per_variable)
-                        converted_label = converted_label + temp_converted
+                if self.boolMultiLabelClassification:
+                    list_of_multilabel_ind = [ind for ind, name_str in enumerate(self.taskDict[task]) if "___" in name_str]
+                    if temp_ground_truth[task_ind] in list_of_multilabel_ind:
+                        converted_label = np.zeros(len(self.classPerTaskDict[task]))
+                        for single_label in self.taskDict[task][temp_ground_truth[task_ind]].split("___"):
+                            temp_unconverted = list(self.classPerTaskDict[task]).index(single_label)
+                            temp_converted = self.get_one_hot_label(indice=temp_unconverted,
+                                                                    depth=len(self.classPerTaskDict[task]))
+                            converted_label = converted_label + temp_converted
+                    else:
+                        if temp_ground_truth[task_ind] < 0:
+                            temp_unconverted = temp_ground_truth[task_ind]
+                        else:
+                            temp_unconverted = list(self.classPerTaskDict[task]).index(
+                                self.taskDict[task][temp_ground_truth[task_ind]])
+                        converted_label = self.get_one_hot_label(indice=temp_unconverted,
+                                                                 depth=len(self.classPerTaskDict[task]))
+                    converted_ground_truth.append(list(converted_label))
+                else:
+                    list_of_multilabel_ind = [ind for ind, name_str in enumerate(self.taskDict[task]) if "___" in name_str]
+                    if temp_ground_truth[task_ind] in list_of_multilabel_ind:
+                        converted_label = np.zeros(self.max_num_classes_per_variable)
+                        for single_label in self.taskDict[task][temp_ground_truth[task_ind]].split("___"):
+                            temp_unconverted = list(self.taskDict[task]).index(single_label)
+                            temp_converted = self.get_one_hot_label(indice=temp_unconverted,
+                                                                    depth=self.max_num_classes_per_variable)
+                            converted_label = converted_label + temp_converted
+                    else:
+                        converted_label = self.get_one_hot_label(indice=temp_ground_truth[task_ind],
+                                                                 depth=self.max_num_classes_per_variable)
+                    converted_ground_truth.append(list(converted_label))
+            else:
+                if self.boolMultiLabelClassification:
+                    if temp_ground_truth[task_ind] < 0:
+                        temp_unconverted = temp_ground_truth[task_ind]
+                    else:
+                        temp_unconverted = list(self.classPerTaskDict[task]).index(
+                            self.taskDict[task][temp_ground_truth[task_ind]])
+                    # print(temp_unconverted)
+                    converted_label = self.get_one_hot_label(indice=temp_unconverted,
+                                                             depth=len(self.classPerTaskDict[task]))
                 else:
                     converted_label = self.get_one_hot_label(indice=temp_ground_truth[task_ind],
                                                              depth=self.max_num_classes_per_variable)
-                converted_ground_truth.append(list(converted_label))
-            else:
-                converted_label = self.get_one_hot_label(indice=temp_ground_truth[task_ind],
-                                                         depth=self.max_num_classes_per_variable)
                 converted_ground_truth.append(converted_label)
         return converted_ground_truth
 
