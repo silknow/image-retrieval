@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import itertools
 import tensorflow as tf
 import tensorflow_hub as hub
+import xlsxwriter
 #import tensorflow_probability as tfp
 
 from sklearn.metrics import confusion_matrix, f1_score
@@ -374,6 +375,8 @@ def estimate_quality_measures(ground_truth, prediction, list_class_names,
 
     for classes_index, class_name in enumerate(list_class_names):
         text_file_result.write("{:{width}}".format(class_name,width=maxStringLength))
+        # print(class_name, classes_index)
+        # print(precision_None)
         text_file_result.write("{:>{width}.2f}".format(precision_None[classes_index] * 100,width=len("Precision [%]")))
         text_file_result.write("{:>{width}.2f}".format(recall_None[classes_index] * 100,width=len("Recall [%]")+4))
         text_file_result.write("{:>{width}.2f}".format(f1_None[classes_index] * 100,width=len("f1-score [%]")+4))
@@ -387,6 +390,107 @@ def estimate_quality_measures(ground_truth, prediction, list_class_names,
 
     text_file_result.close()
     plt.close('all')
+
+
+def estimate_multi_label_quality_measures(gtvar, prvar, list_class_names, result_dir, multiLabelsListOfVariables,
+                                          taskname):
+    print(taskname, "\n\n")
+    # prepare predictions and groundtruth according to multi-class and multi-label classification
+    if multiLabelsListOfVariables is None:
+        ground_truth = np.squeeze([np.where(gt == list_class_names) for gt in gtvar])
+        prediction = np.squeeze([np.where(pr == list_class_names) for pr in prvar])
+        if len(np.unique(ground_truth)) < len(list_class_names):
+            list_class_names = [name for name in list_class_names if
+                                list(list_class_names).index(name) in np.unique(ground_truth)]
+        estimate_quality_measures(ground_truth=ground_truth,
+                                  prediction=prediction,
+                                  list_class_names=list(list_class_names),
+                                  prefix_plot=taskname,
+                                  res_folder_name=result_dir)
+    else:
+        if taskname in multiLabelsListOfVariables:
+            task_dict = {taskname: list_class_names}
+            create_multi_label_rectangle_confusion_matrix(groundtruth=gtvar,
+                                                          predictions=prvar,
+                                                          taskname=taskname,
+                                                          task_dict=task_dict,
+                                                          result_dir=result_dir)
+            gt_binary_no_nan = []
+            pr_binary_no_nan = []
+            gt_binary_all = []
+            pr_binary_all = []
+            for gt, pr in zip(gtvar, prvar):
+                if "nan_OR_" in pr:
+                    gt_binary = [1 if temp_class in gt.split("___") else 0 for temp_class in list_class_names]
+                    pr_binary = [1 if temp_class == pr.replace("nan_OR_", "") else 0 for temp_class in
+                                 list_class_names]
+                    gt_binary_all.append(gt_binary)
+                    pr_binary_all.append(pr_binary)
+                else:
+                    gt_binary = [1 if temp_class in gt.split("___") else 0 for temp_class in list_class_names]
+                    pr_binary = [1 if temp_class in pr.split("___") else 0 for temp_class in list_class_names]
+
+                    gt_binary_no_nan.append(gt_binary)
+                    pr_binary_no_nan.append(pr_binary)
+                    gt_binary_all.append(gt_binary)
+                    pr_binary_all.append(pr_binary)
+
+            pred_no_nan_whole_var = []
+            gt_no_nan_whole_var = []
+            pred_all_whole_var = []
+            gt_all_whole_var = []
+            for class_ind, class_name in enumerate(list_class_names):
+                if len(gt_binary_no_nan) > 0:
+                    ground_truth = np.asarray(gt_binary_no_nan)[:, class_ind]
+                    prediction = np.asarray(pr_binary_no_nan)[:, class_ind]
+                    if np.sum(ground_truth) + np.sum(prediction) > 1:
+                        estimate_quality_measures(ground_truth=ground_truth,
+                                                  prediction=prediction,
+                                                  list_class_names=list(
+                                                      ["no_" + class_name, class_name]),
+                                                  prefix_plot=taskname + "_binary_" + class_name,
+                                                  res_folder_name=result_dir)
+                        pred_no_nan_whole_var.append(prediction)
+                        gt_no_nan_whole_var.append(ground_truth)
+                    else:
+                        print("(binary) ground truth and predictions do not contain the class: ", class_name)
+                else:
+                    print("no evaluation for the binary classification of", class_name, "for the variable",
+                          taskname,
+                          "possible, as there are no predictions for no class of that variable; "
+                          "all sigmoid activation were smaller than the selected threshold.")
+
+                ground_truth_all = np.asarray(gt_binary_all)[:, class_ind]
+                prediction_all = np.asarray(pr_binary_all)[:, class_ind]
+                if np.sum(ground_truth_all) + np.sum(prediction_all) > 1:
+                    estimate_quality_measures(ground_truth=ground_truth_all,
+                                              prediction=prediction_all,
+                                              list_class_names=list(["no_" + class_name, class_name]),
+                                              prefix_plot=taskname + "_binary_" + class_name + "_all",
+                                              res_folder_name=result_dir)
+                    pred_all_whole_var.append(prediction_all)
+                    gt_all_whole_var.append(ground_truth_all)
+                else:
+                    print("(binary all) ground truth and predictions do not contain the class: ", class_name)
+
+            estimate_quality_measures(ground_truth=np.hstack(gt_no_nan_whole_var),
+                                      prediction=np.hstack(pred_no_nan_whole_var),
+                                      list_class_names=list(["not_class", "class"]),
+                                      prefix_plot=taskname + "_binary_whole_var",
+                                      res_folder_name=result_dir)
+            estimate_quality_measures(ground_truth=np.hstack(gt_all_whole_var),
+                                      prediction=np.hstack(pred_all_whole_var),
+                                      list_class_names=list(["not_class", "class"]),
+                                      prefix_plot=taskname + "_binary_whole_var_all",
+                                      res_folder_name=result_dir)
+        else:
+            ground_truth = np.squeeze([np.where(gt == list_class_names) for gt in gtvar])
+            prediction = np.squeeze([np.where(pr == list_class_names) for pr in prvar])
+            estimate_quality_measures(ground_truth=ground_truth,
+                                      prediction=prediction,
+                                      list_class_names=list(list_class_names),
+                                      prefix_plot=taskname,
+                                      res_folder_name=result_dir)
 
 
 def get_statistic_dict(num_labels, coll_dict, relevant_labels):
@@ -820,3 +924,81 @@ def add_jpeg_decoding(module_spec, crop_aspect_ratio=1):
     resized_image_tensor = tf.squeeze(resized_image_tensor)
 
     return jpeg_data_tensor, resized_image_tensor
+
+def create_multi_label_rectangle_confusion_matrix(groundtruth, predictions, taskname, task_dict, result_dir):
+    list_of_possible_classes = list(np.unique(groundtruth))
+    base_classes = task_dict[taskname]
+    for combi_len in range(len(base_classes)):
+        class_combis = list(itertools.combinations(base_classes, combi_len+1))
+        for combi in class_combis:
+            pot_class = "___".join(combi)
+            if pot_class not in list_of_possible_classes:
+                list_of_possible_classes.append(pot_class)
+
+    conf_mat = np.zeros((len(list_of_possible_classes), len(list_of_possible_classes)))
+    conf_mat_all = np.zeros((len(list_of_possible_classes), len(list_of_possible_classes)))
+
+    for gt_class in np.unique(groundtruth):
+        row = list_of_possible_classes.index(gt_class)
+        cur_pred_for_gt = predictions[groundtruth == gt_class]
+        preds, counts = np.unique(cur_pred_for_gt, return_counts=True)
+        for pre, cou in zip(preds, counts):
+            # print(pre)
+            if "nan_OR_" in pre:
+                if pre.replace("nan_OR_","") == "nan":
+                    continue
+                col = list_of_possible_classes.index(pre.replace("nan_OR_",""))
+                conf_mat_all[row, col] +=cou
+            else:
+                col = list_of_possible_classes.index(pre)
+                conf_mat[row, col] += cou
+                conf_mat_all[row, col] += cou
+
+    write_multi_label_eval_statistics_to_file(conf_mat, list_of_possible_classes, result_dir, taskname, "_var")
+    write_multi_label_eval_statistics_to_file(conf_mat_all, list_of_possible_classes, result_dir, taskname, "_var_all")
+
+
+def write_multi_label_eval_statistics_to_file(conf_mat, list_of_possible_classes, result_dir, taskname, file_substr):
+    workbook = xlsxwriter.Workbook(os.path.join(result_dir, taskname + file_substr + '.xlsx'))
+    worksheet = workbook.add_worksheet()
+    bold = workbook.add_format({'bold': True})
+    # write label names to worksheet
+    for column, label in enumerate(list_of_possible_classes):
+        worksheet.write(0, column + 1, str(label))
+        worksheet.write(0, column + 2, "Recall", bold)
+    row_excel = 1
+    precision = []
+    recall = []
+    true_positives = []
+    for column, label in enumerate(list_of_possible_classes):
+        if np.sum(conf_mat[column, :]) != 0:
+            true_positives.append(conf_mat[column, column])
+
+            temp_precision = conf_mat[column, column] / sum(conf_mat[:, column])
+            precision.append(temp_precision)
+
+            temp_recall = conf_mat[column, column] / sum(conf_mat[column, :])
+            recall.append(temp_recall)
+            worksheet.write(row_excel, 0, str(label))
+            for conf_ind, conf_entry in enumerate(conf_mat[column, :]):
+                worksheet.write(row_excel, conf_ind + 1, int(conf_entry))
+            worksheet.write(row_excel, conf_ind + 2, str(np.round(temp_recall * 100, 1)) + "%")
+
+            row_excel += 1
+    all_f_scores = []
+    worksheet.write(row_excel + 1, 0, "F1-score", bold)
+    worksheet.write(row_excel, 0, "Precision", bold)
+    for prec_ind, prec_entry in enumerate(precision):
+        worksheet.write(row_excel, prec_ind + 1, str(np.round(prec_entry * 100, 1)) + "%")
+        f_score = 2 * precision[prec_ind] * recall[prec_ind] / (precision[prec_ind] + recall[prec_ind])
+        worksheet.write(row_excel + 1, prec_ind + 1, str(np.round(f_score * 100, 1)) + "%")
+        if str(f_score)== "nan":
+            all_f_scores.append(0.)
+        else:
+            all_f_scores.append(f_score)
+
+    worksheet.write(row_excel + 3, 0, "Average F1-score", bold)
+    worksheet.write(row_excel + 3, 1, str(np.round(np.mean(all_f_scores) * 100, 1)) + "%")
+    worksheet.write(row_excel + 4, 0, "Overall accuracy", bold)
+    worksheet.write(row_excel + 4, 1, str(np.round(sum(true_positives) / np.sum(conf_mat)*100, 1)) + "%")
+    workbook.close()

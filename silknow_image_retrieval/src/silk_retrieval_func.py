@@ -3,27 +3,38 @@ import sys
 
 # sys.path.insert(0, r"./src/")
 # import DatasetCreation
-
 from . import DatasetCreation
 from . import silk_retrieval_class as src
 
-def create_dataset_parameter(csvfile, imgsavepath, minnumsamples, retaincollections,
-                             num_labeled, master_file_dir, flagRuleDataset, masterfileRules,
-                             multi_label_variables=None):
+
+def create_dataset_parameter(csvfile,
+                             imgsavepath,
+                             master_file_dir,
+                             masterfileRules,
+                             minnumsamples=150,
+                             retaincollections=['cer', 'garin', 'imatex', 'joconde', 'mad', 'met',
+                                                'mfa', 'mobilier', 'mtmad', 'paris-musees', 'risd',
+                                                'smithsonian', 'unipa', 'vam', 'venezia', 'versailles'],
+                             num_labeled=1,
+                             flagRuleDataset=True,
+                             multi_label_variables=["material"]):
     r"""Sets all dataset utilities up.
 
     :Arguments\::
         :csvfile (*string*)\::
-            Filename (including the path) of the .csv file containing information
-            (like the deeplink) about the data in the SILKNOW knowledge graph.
+            The name (including the path) of the CSV file containing the data exported from the
+            SILKNOW knowledge graph.
         :imgsavepath (*string*)\::
-            The path (without filename) that will contain the downloaded images.
-            The original images will be in the folder "img_unscaled" in that directory
-            and the rescaled images will be in the folder "img". It has to be relative
+            The path to the directory that will contain the downloaded images. The original images
+            will be downloaded to the folder img_unscaled in that directory and the rescaled images
+            (the smaller side will be 448 pixels) will be saved to the folder img. It has to be relative
             to the current working directory.
         :minnumsaples (*int*)\::
-            The minimum number of samples that should occur for a single class.
-            Classes with fewer samples will not be considered.
+            The minimum number of samples that has to be available for a single class or, in case the parameter
+            multi_label_variables is not None, for every class combination for the variables contained in that list.
+            The dataset is restricted to class combinations that occur at least minnumsamples times in the dataset
+            exported from the knowledge graph. Classes or class combinations with fewer samples will not be
+            considered in the generated dataset.
         :retaincollections (*list*)\::
             A list containing the museums/collections in the knowledge graph that
             shall be considered for the data set creation. Data from museums/collections
@@ -32,33 +43,22 @@ def create_dataset_parameter(csvfile, imgsavepath, minnumsamples, retaincollecti
             'imatex', 'joconde', 'mad', 'met', 'mfa', 'mobilier', 'mtmad', 'paris-musees',
             'risd', 'smithsonian', 'unipa', 'vam', 'venezia', 'versailles'.
         :num_labeled (*int*)\::
-            Variable that indicates how many labels per sample should be available so that
-            a sample is a valid sample and thus, part of the created dataset. The maximum
-            number of num_labeled is 5, as five semantic variables are considered in the
-            current implementation of this function. Choosing the maximum number means
-            that only complete samples form the dataset. The value of num_labeled must not
-            be smaller than 0.
+            A variable that indicates how many labels per sample should be available so that a sample is a valid
+            sample and thus, part of the created dataset. The maximum value is 5, as five semantic variables
+            are considered in the current implementation of this function. Choosing this maximum number means
+            that only complete samples will form the dataset, while choosing a value of 0 means that records
+            without annotations will also be considered. The value of num_labeled must not be smaller than 0.
         :master_file_dir (*string*)\::
-            The path (without filename) that will contain the created master file listing the
-            created collection files. The collection files contain the relative paths from the
-            master_file_dir to the storage location of the images as well as the class labels
-            assigned to the object (recrd in the SILKNOW knowledge graph) that the image depicts
-            for the five semantic variables timespan, technique, place, material, depiction
-            (according to the group level in the SILKNOW data model).
+            Directory where the collection files and masterfile will be created. The storage location can now
+            be chosen by the user.
         :flagRuleDataset (*bool*)\::
-            Boolean variable indicating whether additional data contained in rules formulated
-            by the cultural heritage experts shall be considered in the dataset creation.
-            If True, images belonging to objects with an object URI mentioned in a rule that are
-            not yet part of the (labeled) dataset will be processed.
+            Boolean variable indicating whether the rule subset shall be generated (True) or not (False).
         :masterfileRules (*string*)\::
-            Name of the rule master file that is assumed to be in master_file_dir. The rule master
-            file lists one rule_file.txt per domain expert rule. Each such rule_file.txt contains one
-            object uri per line that belongs to an object assigned to the respective rule.
+            Name of the rule master file that is assumed to be available in master_file_dir. The rule master
+            file lists all rule files, each of which contains a list of the URIs of all objects which are
+            considered to be similar or dissimilar according to one of the domain experts’ rules.
         :multi_label_variables (*list of strings*)\::
-            A list of the SILKNOW knowledge graph names of the five semantic variables that
-            have multiple class labels per variable to be used in subsequent functions. A complete list
-            would be ["material_group", "place_country_code", "time_label", "technique_group",
-            "depict_group"].
+
 
     :Returns\::
         No returns. This function produces all data files needed for running the other functions
@@ -79,109 +79,95 @@ def create_dataset_parameter(csvfile, imgsavepath, minnumsamples, retaincollecti
                                                            multiLabelsListOfVariables=multi_label_variables)
 
 
-def train_model_parameter(master_file_name, master_file_dir, master_file_rules_name,
-                          master_file_similar_obj, master_file_dissimilar_obj, log_dir, model_dir, add_fc,
-                          num_fine_tune_layers, batch_size, semantic_batch_size_fraction, rules_batch_size_fraction,
-                          how_many_training_steps, learning_rate,
-                          validation_percentage, how_often_validation, loss_ind,
-                          loss_weight_semantic, loss_weight_rules, loss_weight_colour, loss_weight_augment,
-                          variable_weights, relevant_variables, random_crop, random_rotation90, gaussian_noise,
-                          flip_left_right, flip_up_down, multi_label_variables):
+def train_model_parameter(master_file_name,
+                          master_file_dir,
+                          master_file_rules_name,
+                          master_file_similar,
+                          master_file_dissimilar,
+                          log_dir,
+                          model_dir,
+                          add_fc=[1024, 128],
+                          num_fine_tune_layers=0,
+                          batch_size=150,
+                          rules_batch_fraction=0.5,
+                          how_many_training_steps=300,
+                          learning_rate=1e-4,
+                          validation_percentage=25,
+                          how_often_validation=10,
+                          loss_ind="combined_similarity_loss",
+                          loss_weight_semantic= 1 / 4,
+                          loss_weight_rules= 1 / 4,
+                          loss_weight_colour= 1 / 4,
+                          loss_weight_augment= 1 / 4,
+                          variable_weights=[0.3, 0.25, 0.2, 0.15, 0.1],
+                          relevant_variables=["depiction", "material", "place", "technique", "timespan"],
+                          random_crop=[0.7, 1.0],
+                          random_rotation90=True,
+                          gaussian_noise=0.1,
+                          flip_left_right=True,
+                          flip_up_down=True,
+                          multi_label_variables=["material"]):
     r""" Trains a new model for calculating feature vectors.
 
     :Arguments\::
         :master_file_name (*string*)\::
-            The name of the master file that shall be used.
-            The master file has to contain a list of the "collection.txt".
-            All "collection.txt" files have to be in the same folder as the master
-            file. The "collection.txt" files list samples with relative paths to the images and the
-            according class labels. The paths in a "collection.txt" have to
-            be "some_rel_path_from_location_of_master_txt/image_name.jpg".
-            All samples from all stated collection files will be used for training and,
-            possibly, validation.
+            Name of the master file that lists the collection files with the available samples of the
+            labelled subset. This file has to exist in directory master_file_dir.
         :master_file_dir (*string*)\::
-            This variable is a string and contains the absolute path to the
-            master file.
+            Path to the directory containing the master file.
         :master_file_rules_name (*string*)\::
-            The name of the master file containing the additional rules samples that shall be used.
-            The master file has to contain a list of the "collection_rules.txt".
-            All "collection_rules.txt" files have to be in the same folder as the master
-            file. The "collection_rules.txt" files list samples with relative paths to the images and
-            all class labels are set to nan (unknown) as they are irrelevant - all images with relevant
-            class labels are contained in the collections listed in master_file_name. The paths in a
-            "collection_rules.txt" have to
-            be "some_rel_path_from_location_of_master_txt/image_name.jpg".
-            All samples from all stated rule collection files will be used for training.
-        :master_file_similar_obj (*string*)\::
-            The name of the master file listing one file per rule that describe similar objects only.
-            Each listed file contains one object URI per line of an object in the SILKNOW knowledge graph
-            that contributes to the respective "similar rule".
-        :master_file_similar_obj (*string*)\::
-            The name of the master file listing one file per rule that describe dissimilar objects only.
-            Each listed file contains one object URI per line of an object in the SILKNOW knowledge graph
-            that contributes to the respective "dissimilar rule".
+            The name of the master file listing the collection files "collection_rules*.txt" containing the
+            samples of the rule subset that are not contained in the labelled subset. These files have to exist
+            in directory master_file_name. The image paths listed in the collection files have to be given relative
+            to master_file_name. This parameter is only required if rules_batch_fraction > 0.
+        :master_file_similar (*string*)\::
+            The name of the master file listing the rule files, each of which contains a list of URIs of all objects
+            considered to be similar according to one of the rules defined inTable 8. See also the description of
+            parameter masterfileRules in Table 9. This parameter is only required if rules_batch_fraction > 0.
+        :master_file_dissimilar (*string*)\::
+            The name of the master file listing the rule files, each of which contains a list of URIs of all objects
+            considered to be dissimilar. The rules defined for master_file_similar also apply.
         :log_dir (*string*):
-            The path where all summarized training information will be stored.
+            Path to the directory to which the log files will be saved.
         :model_dir (*string*):
-            Path (without filename) to a folder containing a pre-trained network. Only one pre-trained
-            model should be stored in that model folder.
+            Path to the directory to which the trained model will be saved.
         :batch_size (*int*)\::
-            This variable defines how many images shall be used for
-            the retrieval model's training for one training step.
+            Number of samples that are used during each training iteration.
         :how_many_training_steps (*int*)\::
             Number of training iterations.
         :learning_rate (*float*)\::
-            Specifies the learning rate of the Optimizer.
+            Learning rate for the training procedure.
         :add_fc (*array of int*)\::
-            The number of fully connected layers that shall be trained on top
-            of the tensorflow hub Module is equal to the number of entries in
-            the array. Each entry is an int specifying the number of nodes in
-            the individual fully connected layers. If [1000, 100] is given, two
-            fc layers will be added, where the first has 1000 nodes and the
-            second has 100 nodes. If no layers should be added, an empty array
-            '[]' has to be given.
+            The number of fully connected (fc) layers to be trained on top of the ResNet is equal to the number of
+            entries in the array. Each entry is an int specifying the number of nodes in the individual fc layers.
+            If [1000, 100] is given, two fc layers will be added, the first having 1000 and the second having 100
+            nodes. If no layers should be added, an empty array '[]' has to be given.
         :num_fine_tune_layers (*int*)\::
-            The number of layers from the
-            tensorflow hub Module that shall be retrained.
+            Number of residual blocks (each containing three convolutional layers) of ResNet 152 that shall be
+            retrained.
         :loss_ind (*string*)\::
-            The loss function that shall be utilized to estimate the network
-            performance during training. Possible options:
-                - 'triplet': a contrastive loss with multi-label multi-variable based semantic similarity
-                - 'colour': a colour distribution-based similarity
-                - 'rule': a cultural heritage domain expert rule-based similarity
-                - 'self_augment': similarity of the original image an an augmentation of that image
-                - 'combined_similarity_loss': combines all other similarities (exception: contrastive)
-                in one similarity definition.
+            The loss function that shall be minimized to train the network. Possible values: 'triplet',
+            'colour', 'rule', 'combined_similarity_loss'.
         :loss_weight_semantic (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            semantic similarity in the combined similarity. The sum of loss_weight_semantic, loss_weight_rules,
-            loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the semantic similarity term in the combined loss.
         :loss_weight_rules (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            rules similarity in the combined similarity. The sum of loss_weight_semantic, loss_weight_rules,
-            loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the rules similarity term in the combined loss.
         :loss_weight_colour (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            colour similarity in the combined similarity. The sum of loss_weight_semantic, loss_weight_rules,
-            loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the colour similarity term in the combined loss.
         :loss_weight_augment (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            self-augmentation similarity in the combined similarity. The sum of loss_weight_semantic,
-            loss_weight_rules, loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the self-similarity term in the combined loss.
         :relevant_variables (*list*)\::
-            A list containing the collection.txt's header terms of the labels
-            to be considered. The terms must not contain blank spaces; use '_'
-            instead of blank spaces!
-                - Example (string in configuration file): #timespan, #place
-                - Example (according list in code): [timespan, place]
+            A list containing the names of the variables to be considered in the definition of semantic similarity.
+            These names have to be those (or a subset of those) listed in the header sections of the collection
+            files collection_n.txt.
         :variable_weights (*list of floats*)\::
-            List of weights (floats) in [0, 1] describing the importance of the semantic variabels in the
-            definition of semantic similarity. The order has to be the same as in relevant_variables
-            and the sum of weights has to be one.
+            List of weights (floats in [0, 1]) describing the importance of the semantic variables in the
+            definition of semantic similarity. The order has to be the same as in relevant_variables and the
+            sum has to be 1.
         :how_often_validation (*int*)\::
-            Number of training iterations between validations.
-        :val_percentage (*int*)\::
-            Percentage of training data that will be used for validation.
+            Number of training iterations between two computations of the validation loss.
+        :validation_percentage (*int*)\::
+            Percentage of training samples that are used for validation. The value has to be in the range [0, 100).
         :random_crop (*list*)\::
             Range of float fractions for centrally cropping the image. The crop fraction
             is drawn out of the provided range [lower bound, upper bound],
@@ -197,21 +183,12 @@ def train_model_parameter(master_file_name, master_file_dir, master_file_rules_n
         :flip_up_down (*bool*)\::
             Data augmentation: should vertical flips be used (True) or not (False)?.
         :multi_label_variables (*list of strings*)\::
-            A list of variable names of the five semantic variables (relevant_variables) that
-            have multiple class labels per variable to be used. A complete list
-            would be ["material", "place", "timespan", "technique", "depiction"].
-        :semantic_batch_size_fraction (*float*)\::
-            A batch of the size batch_size will be drawn from two types of silk images. The first type
-            contains images coming along with at least one class label for relevant_variables and the second
-            type contains additional fully unlabeled images that contribute to the CH domain expert's rules.
-            This variable defines the proportion of the labeled images in the batch. The sum of
-            semantic_batch_size_fraction and rules_batch_size_fraction has to be one.
-        :rules_batch_size_fraction (*float*)\::
-            A batch of the size batch_size will be drawn from two types of silk images. The first type
-            contains images coming along with at least one class label for relevant_variables and the second
-            type contains additional fully unlabeled images that contribute to the CH domain expert's rules.
-            This variable defines the proportion of the unlabeled images in the batch. The sum of
-            semantic_batch_size_fraction and rules_batch_size_fraction has to be one.
+            A list of variable names of the five semantic variables (relevant_variables) that have multiple class
+            labels per variable to be used. A complete list would be ["material", "place", "timespan",
+            "technique", "depiction"].
+        :rules_batch_fraction (*float*)\::
+            Fraction of images in a minibatch (float in [0, 1] to be drawn from the images without annotations
+            in the rules subset.
 
     :Returns\::
         No returns. The trained graph (containing the pre-trained ResNet 152 and the
@@ -230,8 +207,8 @@ def train_model_parameter(master_file_name, master_file_dir, master_file_rules_n
     sr.model_dir = model_dir
 
     sr.master_file_rules_name = master_file_rules_name
-    sr.master_file_similar_obj = master_file_similar_obj
-    sr.master_file_dissimilar_obj = master_file_dissimilar_obj
+    sr.master_file_similar_obj = master_file_similar
+    sr.master_file_dissimilar_obj = master_file_dissimilar
 
     sr.add_fc = add_fc
     sr.num_fine_tune_layers = num_fine_tune_layers
@@ -266,8 +243,8 @@ def train_model_parameter(master_file_name, master_file_dir, master_file_rules_n
         elif loss_ind == "self_augment":
             sr.loss_weight_augment = 1.
 
-    sr.semantic_batch_size_fraction = semantic_batch_size_fraction
-    sr.rules_batch_size_fraction = rules_batch_size_fraction
+    sr.semantic_batch_size_fraction = 1-rules_batch_fraction
+    sr.rules_batch_size_fraction = rules_batch_fraction
     sr.colour_augment_batch_size_fraction = 0
 
     sr.aug_set_dict['random_crop'] = random_crop
@@ -282,29 +259,26 @@ def train_model_parameter(master_file_name, master_file_dir, master_file_rules_n
     sr.train_model()
 
 
-def build_kDTree_parameter(model_dir, master_file_tree, master_dir_tree, tree_dir, relevant_variables):
+def build_kDTree_parameter(model_dir,
+                           master_file_tree,
+                           master_dir_tree,
+                           tree_dir,
+                           relevant_variables=["depiction", "material", "place", "technique", "timespan"],
+                           multi_label_variables=["material"]):
     r"""Builds a kD-Tree using a pre-trained network.
 
     :Arguments\::
         :model_dir (*string*):
-            Path (without filename) to a folder containing a pre-trained network. Only one pre-trained
-            model should be stored in that model folder. It is exactly the path defined in the variable model_dir in the
-            function 'train_model_parameter'.
+            Path (without filename) to a folder containing a pre-trained network. Only one pre-trained model
+            should be stored in that model folder.
         :master_file_tree (*string*)\::
-            The name of the master file that shall be used.
-            The master file has to contain a list of the "collection.txt".
-            All "collection.txt" files have to be in the same folder as the master
-            file. The "collection.txt" files list samples with relative paths to the images and the
-            according class labels. The paths in a "collection.txt" have to
-            be "some_rel_path_from_location_of_master_txt/image_name.jpg".
-            All samples from all stated collection files will be used to create the tree.
+            Name of the master file listing the collection files with the available samples. It has to exist in
+            the directory master_dir_tree.
         :master_dir_tree (*string*)\::
-            This variable is a string and contains the absolute path to the
-            master file.
+            Path to the directory containing the master file master_file_tree.
         :relevant_variables (*list*)\::
-            A list containing the collection.txt's header terms of the labels
-            to be considered. The terms must not contain blank spaces; use '_'
-            instead of blank spaces! Example (according list in code): [timespan, place]
+            A list containing the names of the variables to be considered in the definition of semantic similarity.
+            These names have to be those used at training time of the CNN model passed to model_dir.
         :tree_dir (*string*):
             Path to where the kD-tree "kdtree.npz" will be saved. It's a dictionary containing
             the following key value pairs:
@@ -313,6 +287,9 @@ def build_kDTree_parameter(model_dir, master_file_tree, master_dir_tree, tree_di
                 - DictTrain: The image data including their labels that was used to build the tree.
                 - relevant_variables: A list of the image data's labels that shall be considered.
                 - label2class_list: A list assigning the label indices to label names.
+        :multi_label_variables (*list of strings*)\::
+            A list of names of those variables (relevant_variables) that have multiple class labels per sample.
+            A complete list would be ["material", "place", "timespan", "technique", "depiction"].
 
     :Returns\::
         No returns. The kD-tree is stored automatically in the directory given in
@@ -328,45 +305,47 @@ def build_kDTree_parameter(model_dir, master_file_tree, master_dir_tree, tree_di
     sr.master_dir_tree = master_dir_tree
     sr.tree_dir = tree_dir
     sr.relevant_variables = relevant_variables
+    sr.multiLabelsListOfVariables = multi_label_variables
 
     # call main function
     sr.build_kd_tree()
 
 
-def get_kNN_parameter(tree_dir, master_file_retrieval, master_dir_retrieval, model_dir, pred_gt_dir,
-                      num_neighbors, bool_labeled_input):
+def get_kNN_parameter(tree_dir,
+                      master_file_retrieval,
+                      master_dir_retrieval,
+                      model_dir,
+                      pred_gt_dir,
+                      num_neighbors=10,
+                      bool_labeled_input=False,
+                      multi_label_variables=["material"]):
     r"""Retrieves the k nearest neighbours from a given kdTree.
 
     :Arguments\::
         :tree_dir (*string*)\::
-            Path (without filename) to a "kdtree.npz"-file that was produced by
-            the function build_kDTree. Only one kD-tree should be stored in that folder.
-            It refers to the variable savepath in the function 'build_kDTree_parameter'.
-            The provided kD-tree has to be built on the basis of the same pre-trained model
-            as provided via the variable model_path of this function.
+            Path to where the kD-tree "kdtree.npz" was saved. It's a dictionary containing
+            the following key value pairs:
+                - Tree: The kD-tree accroding to the python toolbox sklearn.neighbors.
+                - Labels: The class label indices of the data whose feature vectors are stored in the tree nodes.
+                - DictTrain: The image data including their labels that was used to build the tree.
+                - relevant_variables: A list of the image data's labels that shall be considered.
+                - label2class_list: A list assigning the label indices to label names.
         :master_file_retrieval (*string*)\::
-            The name of the master file that shall be used.
-            The master file has to contain a list of the "collection.txt".
-            All "collection.txt" files have to be in the same folder as the master
-            file. The "collection.txt" files list samples with relative paths to the images and the
-            according class labels. The paths in a "collection.txt" have to
-            be "some_rel_path_from_location_of_master_txt/image_name.jpg".
-            For all samples from all stated collection files the feature vectors will be estimated
-            resulting from the pre-trained model in model_path and afterwards the k nearest
-            neighbours, where k refers to num_neighbors, will be found in the provided kD-tree.
+            Name of the master file that lists the collection files with the available samples. This file has to
+            exist in directory master_dir_retrieval.
         :master_dir_retrieval (*string*)\::
-            This variable is a string and contains the absolute path to the
-            master file.
+            Path to the directory containing the master file master_file_retrieval.
         :bool_labeled_input (*bool*)\::
-            A boolean that states whether labels are available for the input image data (Tue)
-            or not(False).
+            An indicator whether annotations are provided in the collection files that are listed in the master file
+            for the input samples. Thus, this parameter defines the use case for the image retrieval.
+            If bool_labeled_input = False, the query images are assumed to be unlabeled, as it is the standard
+            situation in the SILKNOW use case. Otherwise, the search images are assumed to have class labels, as
+            required for images to be used for evaluation.
         :model_dir (*string*):
-            Path (without filename) to a pre-trained network. Only one pre-trained
-            model should be stored in that model folder. It refers to the variable logpath in the
-            function 'train_model_parameter'.
+            Path (without filename) to a folder containing a pre-trained network. Only one pre-trained model should
+            be stored in that model folder.
         :num_neighbors (*int*)\::
-            Number of closest neighbours that are retrieved from a kD-Tree
-            during evaluation.
+            Number of nearest neighbours that are retrieved from a kD-Tree.
         :pred_gt_dir (*string*):
             Path to where the results will be saved.
             In case of provided labeled data it's a dictionary "pred_gt.npz" containing the following key value pairs:
@@ -381,6 +360,12 @@ def get_kNN_parameter(tree_dir, master_file_retrieval, master_dir_retrieval, mod
                 - kNN_kg_object_uri: The knowledge graph object URIs of the kNNs.
                 - kNN_kD_index: The indices of the kNN of the input image in the kD-tree.
                 - kNN_descriptor_dist: The distances of the descriptors of the kNN to the descriptor of the input image.
+        :multi_label_variables (*list of strings*)\::
+            A list of variable names of the five semantic variables (relevant_variables) that have multiple class
+            labels per variable. A complete list would be ["material", "place", "timespan", "technique", "depiction"].
+            A multi-label kNN-classification is realised for the list of variables indicated by this parameter instead
+            of the default single-label kNN-classification.
+
     :Returns\::
         No returns. The result is stored automatically in the directory given in
         the variable pred_gt_dir.
@@ -396,26 +381,28 @@ def get_kNN_parameter(tree_dir, master_file_retrieval, master_dir_retrieval, mod
     sr.pred_gt_dir = pred_gt_dir
     sr.num_neighbors = num_neighbors
     sr.bool_labeled_input = bool_labeled_input
+    sr.multiLabelsListOfVariables = multi_label_variables
 
     # call main function
     sr.get_knn()
 
 
-def evaluate_model_parameter(pred_gt_dir, eval_result_dir):
+def evaluate_model_parameter(pred_gt_dir,
+                             eval_result_dir,
+                             multi_label_variables=["material"]):
     r""" Evaluates a pre-trained model.
 
     :Arguments\::
         :pred_gt_path (*string*)\::
-            Path (without filename) to a "pred_gt.npz" file that was produced by
-            the function get_KNN. The folder should contain only one such file.
-            The file contains the kD-tree as well as the labeled test data and the
-            labels of the k nearest neighbours.
+            Path to a directory containing the file pred_gt.npz containing the output of the function
+            get_kNN_parameter. This file contains the input of the evaluation procedure.
         :eval_result_dir (*string*)\::
-            Path to where the evaluation results will be saved. The evaluation
-            results contain per evaluated relevant label:
-                - "evaluation_results.txt" containing quality metrics.
-                - "Confusion_Matrix.png": containing the confusion matrix with asolute numbers.
-                - "Confusion_Matrix_normalized.png": containing the row-wise normalized confusion matrix.
+            Path to where the evaluation results will be saved. The evaluation results are stored in multiple
+            files per variable.
+        :multi_label_variables (*list of strings*)\::
+            A list of variable names of the five semantic variables (relevant_variables) that have multiple class
+            labels per variable. A complete list would be ["material", "place", "timespan", "technique", "depiction"].
+
     :Returns\::
         No returns. The results are stored automatically in the directory given in
         the variable eval_result_dir.
@@ -427,58 +414,69 @@ def evaluate_model_parameter(pred_gt_dir, eval_result_dir):
     # set parameters
     sr.pred_gt_dir = pred_gt_dir
     sr.eval_result_dir = eval_result_dir
+    sr.multiLabelsListOfVariables = multi_label_variables
 
     # call main function
     sr.evaluate_model()
 
 
-def cross_validation_parameter(master_file_name, master_file_dir, master_file_rules_name, master_file_similar_obj,
-                               master_file_dissimilar_obj, log_dir, model_dir, tree_dir,
-                               pred_gt_dir, eval_result_dir, add_fc, num_fine_tune_layers, batch_size,
-                               semantic_batch_size_fraction, rules_batch_size_fraction,
-                               how_many_training_steps, learning_rate, validation_percentage,
-                               how_often_validation, loss_ind, num_neighbors, relevant_variables, variable_weights,
-                               loss_weight_semantic, loss_weight_rules, loss_weight_colour, loss_weight_augment,
-                               multi_label_variables, random_crop, random_rotation90, gaussian_noise, flip_left_right,
-                               flip_up_down):
+def cross_validation_parameter(master_file_name,
+                               master_file_dir,
+                               master_file_rules_name,
+                               master_file_similar,
+                               master_file_dissimilar,
+                               log_dir,
+                               model_dir,
+                               tree_dir,
+                               pred_gt_dir,
+                               eval_result_dir,
+                               add_fc=[1024, 128],
+                               num_fine_tune_layers=0,
+                               batch_size=150,
+                               rules_batch_fraction=0.5,
+                               how_many_training_steps=300,
+                               learning_rate=1e-4,
+                               validation_percentage=25,
+                               how_often_validation=10,
+                               loss_ind="combined_similarity_loss",
+                               num_neighbors=10,
+                               variable_weights=[0.3, 0.25, 0.2, 0.15, 0.1],
+                               relevant_variables=["depiction", "material", "place", "technique", "timespan"],
+                               loss_weight_semantic=1 / 4,
+                               loss_weight_rules=1 / 4,
+                               loss_weight_colour=1 / 4,
+                               loss_weight_augment=1 / 4,
+                               multi_label_variables=["material"],
+                               random_crop=[0.7, 1.0],
+                               random_rotation90=True,
+                               gaussian_noise=0.1,
+                               flip_left_right=True,
+                               flip_up_down=True,):
     r""" Performs 5-fold cross validation.
 
     :Arguments\::
         :master_file_name (*string*)\::
-            The name of the master file that shall be used.
-            The master file has to contain a list of the "collection.txt".
-            All "collection.txt" files have to be in the same folder as the master
-            file. The "collection.txt" files list samples with relative paths to the images and the
-            according class labels. The paths in a "collection.txt" have to
-            be "some_rel_path_from_location_of_master_txt/image_name.jpg".
-            All samples from all stated collection files will be used for training and,
-            possibly, validation.
+            Name of the master file that lists the collection files with the available samples of the
+            labelled subset. This file has to exist in directory master_file_dir.
         :master_file_dir (*string*)\::
-            This variable is a string and contains the absolute path to the
-            master file.
+            Path to the directory containing the master file.
         :master_file_rules_name (*string*)\::
-            The name of the master file containing the additional rules samples that shall be used.
-            The master file has to contain a list of the "collection_rules.txt".
-            All "collection_rules.txt" files have to be in the same folder as the master
-            file. The "collection_rules.txt" files list samples with relative paths to the images and
-            all class labels are set to nan (unknown) as they are irrelevant - all images with relevant
-            class labels are contained in the collections listed in master_file_name. The paths in a
-            "collection_rules.txt" have to
-            be "some_rel_path_from_location_of_master_txt/image_name.jpg".
-            All samples from all stated rule collection files will be used for training.
-        :master_file_similar_obj (*string*)\::
+            The name of the master file listing the collection files "collection_rules*.txt" containing the
+            samples of the rule subset that are not contained in the labelled subset. These files have to exist
+            in directory master_file_name. The image paths listed in the collection files have to be given relative
+            to master_file_name. This parameter is only required if rules_batch_fraction > 0.
+        :master_file_similar (*string*)\::
             The name of the master file listing one file per rule that describe similar objects only.
             Each listed file contains one object URI per line of an object in the SILKNOW knowledge graph
             that contributes to the respective "similar rule".
-        :master_file_similar_obj (*string*)\::
+        :master_file_dissimilar (*string*)\::
             The name of the master file listing one file per rule that describe dissimilar objects only.
             Each listed file contains one object URI per line of an object in the SILKNOW knowledge graph
             that contributes to the respective "dissimilar rule".
         :log_dir (*string*):
-            The path where all summarized training information will be stored.
+            Path to the directory to which the log files will be saved.
         :model_dir (*string*):
-            Path (without filename) to a folder containing a pre-trained network. Only one pre-trained
-            model should be stored in that model folder.
+            Path to the directory to which the trained model will be saved.
         :tree_dir (*string*):
             Path to where the kD-tree "kdtree.npz" will be saved. It's a dictionary containing
             the following key value pairs:
@@ -488,8 +486,7 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
                 - relevant_variables: A list of the image data's labels that shall be considered.
                 - label2class_list: A list assigning the label indices to label names.
         :num_neighbors (*int*)\::
-            Number of closest neighbours that are retrieved from a kD-Tree
-            during evaluation.
+            Number of nearest neighbours that are retrieved from a kD-Tree.
         :pred_gt_dir (*string*):
             Path to where the results will be saved.
             In case of provided labeled data it's a dictionary "pred_gt.npz" containing the following key value pairs:
@@ -505,66 +502,45 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
                 - kNN_kD_index: The indices of the kNN of the input image in the kD-tree.
                 - kNN_descriptor_dist: The distances of the descriptors of the kNN to the descriptor of the input image.
         :eval_result_dir (*string*)\::
-            Path to where the evaluation results will be saved. The evaluation
-            results contain per evaluated relevant label:
-                - "evaluation_results.txt" containing quality metrics.
-                - "Confusion_Matrix.png": containing the confusion matrix with asolute numbers.
-                - "Confusion_Matrix_normalized.png": containing the row-wise normalized confusion matrix.
+            Path to where the evaluation results will be saved. The evaluation results are stored in multiple
+            files per variable.
         :batch_size (*int*)\::
-            This variable defines how many images shall be used for
-            the retrieval model's training for one training step.
+            Number of samples that are used during each training iteration.
         :how_many_training_steps (*int*)\::
             Number of training iterations.
         :learning_rate (*float*)\::
-            Specifies the learning rate of the Optimizer.
+            Learning rate for the training procedure.
         :add_fc (*array of int*)\::
-            The number of fully connected layers that shall be trained on top
-            of the tensorflow hub Module is equal to the number of entries in
-            the array. Each entry is an int specifying the number of nodes in
-            the individual fully connected layers. If [1000, 100] is given, two
-            fc layers will be added, where the first has 1000 nodes and the
-            second has 100 nodes. If no layers should be added, an empty array
-            '[]' has to be given.
+            The number of fully connected (fc) layers to be trained on top of the ResNet is equal to the number of
+            entries in the array. Each entry is an int specifying the number of nodes in the individual fc layers.
+            If [1000, 100] is given, two fc layers will be added, the first having 1000 and the second having 100
+            nodes. If no layers should be added, an empty array '[]' has to be given.
         :num_fine_tune_layers (*int*)\::
-            The number of layers from the
-            tensorflow hub Module that shall be retrained.
+            Number of residual blocks (each containing three convolutional layers) of ResNet 152 that shall be
+            retrained.
         :loss_ind (*string*)\::
-            The loss function that shall be utilized to estimate the network
-            performance during training. Possible options:
-                - 'triplet': a contrastive loss with multi-label multi-variable based semantic similarity
-                - 'colour': a colour distribution-based similarity
-                - 'rule': a cultural heritage domain expert rule-based similarity
-                - 'self_augment': similarity of the original image an an augmentation of that image
-                - 'combined_similarity_loss': combines all other similarities (exception: contrastive)
-                in one similarity definition.
+            The loss function that shall be minimized to train the network. Possible values: 'triplet',
+            'colour', 'rule', 'combined_similarity_loss'.
         :loss_weight_semantic (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            semantic similarity in the combined similarity. The sum of loss_weight_semantic, loss_weight_rules,
-            loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the semantic similarity term in the combined loss.
         :loss_weight_rules (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            rules similarity in the combined similarity. The sum of loss_weight_semantic, loss_weight_rules,
-            loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the rules similarity term in the combined loss.
         :loss_weight_colour (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            colour similarity in the combined similarity. The sum of loss_weight_semantic, loss_weight_rules,
-            loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the colour similarity term in the combined loss.
         :loss_weight_augment (*float*)\::
-            Only, if loss_ind == combined_similarity_loss. The weight (float in [0, 1]) for the
-            self-augmentation similarity in the combined similarity. The sum of loss_weight_semantic,
-            loss_weight_rules, loss_weight_colour and loss_weight_augment has to be one.
+            Weight (float in [0, 1]) for the self-similarity term in the combined loss.
         :relevant_variables (*list*)\::
-            A list containing the collection.txt's header terms of the labels
-            to be considered. The terms must not contain blank spaces; use '_'
-            instead of blank spaces! Example (according list in code): [timespan, place]
+            A list containing the names of the variables to be considered in the definition of semantic similarity.
+            These names have to be those (or a subset of those) listed in the header sections of the collection
+            files collection_n.txt.
         :variable_weights (*list of floats*)\::
-            List of weights (floats) in [0, 1] describing the importance of the semantic variables in the
-            definition of semantic similarity. The order has to be the same as in relevant_variables
-            and the sum of weights has to be one.
+            List of weights (floats in [0, 1]) describing the importance of the semantic variables in the
+            definition of semantic similarity. The order has to be the same as in relevant_variables and the
+            sum has to be 1.
         :how_often_validation (*int*)\::
-            Number of training iterations between validations.
+            Number of training iterations between two computations of the validation loss.
         :validation_percentage (*int*)\::
-            Percentage of training data that will be used for validation.
+            Percentage of training samples that are used for validation. The value has to be in the range [0, 100).
         :random_crop (*list*)\::
             Range of float fractions for centrally cropping the image. The crop fraction
             is drawn out of the provided range [lower bound, upper bound],
@@ -580,21 +556,12 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
         :flip_up_down (*bool*)\::
             Data augmentation: should vertical flips be used (True) or not (False)?.
         :multi_label_variables (*list of strings*)\::
-            A list of variable names of the five semantic variables (relevant_variables) that
-            have multiple class labels per variable to be used. A complete list
-            would be ["material", "place", "timespan", "technique", "depiction"].
-        :semantic_batch_size_fraction (*float*)\::
-            A batch of the size batch_size will be drawn from two types of silk images. The first type
-            contains images coming along with at least one class label for relevant_variables and the second
-            type contains additional fully unlabeled images that contribute to the CH domain expert's rules.
-            This variable defines the proportion of the labeled images in the batch. The sum of
-            semantic_batch_size_fraction and rules_batch_size_fraction has to be one.
-        :rules_batch_size_fraction (*float*)\::
-            A batch of the size batch_size will be drawn from two types of silk images. The first type
-            contains images coming along with at least one class label for relevant_variables and the second
-            type contains additional fully unlabeled images that contribute to the CH domain expert's rules.
-            This variable defines the proportion of the unlabeled images in the batch. The sum of
-            semantic_batch_size_fraction and rules_batch_size_fraction has to be one.
+            A list of variable names of the five semantic variables (relevant_variables) that have multiple class
+            labels per variable to be used. A complete list would be ["material", "place", "timespan",
+            "technique", "depiction"].
+        :rules_batch_fraction (*float*)\::
+            Fraction of images in a minibatch (float in [0, 1] to be drawn from the images without annotations
+            in the rules subset.
 
     :Returns\::
         No returns; all results will be stored automatically. The training summary in log_dir, the trained models of
@@ -610,8 +577,8 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
     sr.master_file_name_cv = master_file_name
     sr.master_file_rules_name = master_file_rules_name
     sr.master_file_rules_name_cv = master_file_rules_name
-    sr.master_file_similar_obj = master_file_similar_obj
-    sr.master_file_dissimilar_obj = master_file_dissimilar_obj
+    sr.master_file_similar_obj = master_file_similar
+    sr.master_file_dissimilar_obj = master_file_dissimilar
 
     sr.master_file_dir_cv = master_file_dir
     sr.log_dir_cv = log_dir
@@ -663,8 +630,8 @@ def cross_validation_parameter(master_file_name, master_file_dir, master_file_ru
         elif loss_ind == "self_augment":
             sr.loss_weight_augment = 1.
 
-    sr.semantic_batch_size_fraction = semantic_batch_size_fraction
-    sr.rules_batch_size_fraction = rules_batch_size_fraction
+    sr.semantic_batch_size_fraction = 1 - rules_batch_fraction
+    sr.rules_batch_size_fraction = rules_batch_fraction
     sr.colour_augment_batch_size_fraction = 0
 
     sr.aug_set_dict['random_crop'] = random_crop

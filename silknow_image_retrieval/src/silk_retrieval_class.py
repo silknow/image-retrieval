@@ -36,7 +36,6 @@ from . import SILKNOW_WP4_library as wp4lib
 from . import SampleHandler
 from . import SimilarityLosses
 from . import hue_saturation_analysis as hue_sat
-
 import time
 
 
@@ -142,6 +141,8 @@ class SilkRetriever:
         self.master_file_retrieval = ""
         self.master_file_retrieval_cv = ""
         self.master_dir_retrieval = ""
+        self.master_file_retrieval_rules = ""
+        self.bool_in_cv = False
 
         # save training
         self.log_dir = ""
@@ -722,9 +723,10 @@ class SilkRetriever:
 
         # load samples from which the tree will be created
         coll_list = wp4lib.master_file_to_collections_list(self.master_dir_tree, self.master_file_tree)
-        coll_dict, data_dict = wp4lib.collections_list_MTL_to_image_lists(coll_list,
-                                                                          self.relevant_variables,
-                                                                          self.master_dir_tree)
+        coll_dict, data_dict = wp4lib.collections_list_MTL_to_image_lists(collections_list=coll_list,
+                                                                          labels_2_learn=self.relevant_variables,
+                                                                          master_dir=self.master_dir_tree,
+                                                                          multiLabelsListOfVariables=self.multiLabelsListOfVariables)
         if self.loss_ind in ["combined_similarity_loss", "prior_knowledge_similarity_loss"] \
                 and self.rules_batch_size_fraction > 0:
             coll_list_rule = wp4lib.master_file_to_collections_list(self.master_dir_tree, self.master_file_rules_name)
@@ -746,7 +748,17 @@ class SilkRetriever:
         label2class_list = []
         for label_key in self.relevant_variables:
             var_name = np.asarray(label_key)
-            var_list = np.asarray(list(coll_dict[label_key].keys()))
+            if self.multiLabelsListOfVariables is None:
+                var_list = np.asarray(list(coll_dict[label_key].keys()))
+            else:
+                var_list = []
+                for cl in list(coll_dict[label_key].keys()):
+                    if "___" not in cl:
+                        var_list.append(cl)
+                    else:
+                        for singleLabel in cl.split("___"):
+                            var_list.append(singleLabel)
+                var_list = np.asarray(np.unique(var_list))
             var_list = np.insert(var_list, 0, var_name)
             label2class_list.append(var_list)
 
@@ -804,13 +816,14 @@ class SilkRetriever:
         # Perform image retrieval
         dist, ind = tree.query(np.squeeze(features), k=self.num_neighbors)
 
-        # Get labels of knn and knn-classification
+        # Get labels of knn (pred_top_k) and knn-classification (actual prediction)
         (pred_label_test,
          pred_names_test,
          pred_occ_test,
          pred_top_k) = self._get_knn_labels(labels_tree=labels_tree,
                                             tree_index_acc_labels=ind,
-                                            relevant_variables=relevant_variables)
+                                            relevant_variables=relevant_variables,
+                                            label2class_list=label2class_list)
 
         # Save results
         self._write_knn_list_and_lut(query_image_list=image_list, tree_image_list=list(data_dict_train.keys()),
@@ -860,26 +873,23 @@ class SilkRetriever:
             gt_var = gt_var[nan_mask]
             pr_var = pr_var[nan_mask]
 
-            ground_truth = np.squeeze([np.where(gt == list_class_names) for gt in gt_var])
-            prediction = np.squeeze([np.where(pr == list_class_names) for pr in pr_var])
-
             # identify underrepresented tasks
-            gt_unique, gt_counts = np.unique(ground_truth, return_counts=True)
+            gt_unique, gt_counts = np.unique(gt_var, return_counts=True)
             if len(gt_unique) < len(list_class_names):
                 print('WARNING: The variable {0!r} has no contribution for '
                       'at least one class in the ground truth. The variable will not be evaluated!'.format(task_name))
                 continue
             if any(gt_counts) < 20:
-                print('WARNING: The variable {0!r} has a contribution off less than 20 samples for '
+                print('WARNING: The variable {0!r} has a contribution of less than 20 samples for '
                       'at least one class in the ground truth. The evaluation will probably not be '
                       'representative!'.format(task_name))
 
-            # evaluate
-            wp4lib.estimate_quality_measures(ground_truth=ground_truth,
-                                             prediction=prediction,
-                                             list_class_names=list(list_class_names),
-                                             prefix_plot=task_name,
-                                             res_folder_name=self.eval_result_dir)
+            wp4lib.estimate_multi_label_quality_measures(gtvar=gt_var,
+                                                         prvar=pr_var,
+                                                         list_class_names=list_class_names,
+                                                         result_dir=self.eval_result_dir,
+                                                         multiLabelsListOfVariables=self.multiLabelsListOfVariables,
+                                                         taskname = task_name)
 
         return all_var_ground_truth, all_var_predictions
 
@@ -937,6 +947,7 @@ class SilkRetriever:
 
                 self.master_file_rules_name = temp_train_master_name_rules
                 self.master_file_retrieval_rules = temp_test_master_name_rules
+                self.bool_in_cv=True
 
             """---------------------- perform training --------------------------------------------------------------"""
             self.master_file_name = temp_train_master_name
@@ -1012,13 +1023,20 @@ class SilkRetriever:
             cur_ground_truth = cur_ground_truth[nan_mask]
             cur_predictions = cur_predictions[nan_mask]
 
-            ground_truth = np.squeeze([np.where(gt == list_class_names) for gt in cur_ground_truth])
-            prediction = np.squeeze([np.where(pr == list_class_names) for pr in cur_predictions])
-            wp4lib.estimate_quality_measures(ground_truth=ground_truth,
-                                             prediction=prediction,
-                                             list_class_names=list(list_class_names),
-                                             prefix_plot=task_name,
-                                             res_folder_name=self.eval_result_dir_cv)
+            wp4lib.estimate_multi_label_quality_measures(gtvar=cur_ground_truth,
+                                                         prvar=cur_predictions,
+                                                         list_class_names=list_class_names,
+                                                         result_dir=self.eval_result_dir_cv,
+                                                         multiLabelsListOfVariables=self.multiLabelsListOfVariables,
+                                                         taskname=task_name)
+
+            # ground_truth = np.squeeze([np.where(gt == list_class_names) for gt in cur_ground_truth])
+            # prediction = np.squeeze([np.where(pr == list_class_names) for pr in cur_predictions])
+            # wp4lib.estimate_quality_measures(ground_truth=ground_truth,
+            #                                  prediction=prediction,
+            #                                  list_class_names=list(list_class_names),
+            #                                  prefix_plot=task_name,
+            #                                  res_folder_name=self.eval_result_dir_cv)
 
     """ -------------------------------- Routines CNN ---------------------------------------------------------------"""
 
@@ -1365,16 +1383,18 @@ class SilkRetriever:
     def _get_query_image_list(self, relevant_variables):
         coll_list = wp4lib.master_file_to_collections_list(self.master_dir_retrieval, self.master_file_retrieval)
         if self.loss_ind in ["combined_similarity_loss", "prior_knowledge_similarity_loss"] \
-                and self.rules_batch_size_fraction > 0:
+                and self.rules_batch_size_fraction > 0 and self.bool_in_cv:
             coll_list_rules = wp4lib.master_file_to_collections_list(self.master_dir_retrieval,
                                                                      self.master_file_retrieval_rules)
             coll_list = np.hstack((coll_list, coll_list_rules))
 
         if self.bool_labeled_input:
-            coll_dict, data_dict = wp4lib.collections_list_MTL_to_image_lists(collections_list=coll_list,
-                                                                              labels_2_learn=relevant_variables,
-                                                                              master_dir=self.master_dir_retrieval,
-                                                                              bool_unlabeled_dataset=True)
+            coll_dict, data_dict = wp4lib.collections_list_MTL_to_image_lists(
+                                            collections_list=coll_list,
+                                            labels_2_learn=relevant_variables,
+                                            master_dir=self.master_dir_retrieval,
+                                            bool_unlabeled_dataset=True,
+                                            multiLabelsListOfVariables=self.multiLabelsListOfVariables)
 
             image_list = list(data_dict.keys())
             # Get labels, check for incompleteness
@@ -1410,27 +1430,24 @@ class SilkRetriever:
 
         return features
 
-    def _get_knn_labels(self, labels_tree, tree_index_acc_labels, relevant_variables):
+    def _get_knn_labels(self, labels_tree, tree_index_acc_labels, relevant_variables, label2class_list):
         pred_label_test = []
         pred_names_test = []
         pred_occ_test = []
         pred_top_k = []
         if len(relevant_variables) == 1:
+            task_name=relevant_variables[0]
             for k_neighbors in range(np.shape(tree_index_acc_labels)[0]):
                 # list of class labels for all num_neighbors nearest neighbors
                 # of the feature vector number k_neighbors in the test set
                 temp_pred_list = list(itemgetter(*tree_index_acc_labels[k_neighbors])(labels_tree))
 
                 # majority vote without nan-predictions (nan-pred only if all NN nan)
-                if temp_pred_list.count('nan') == self.num_neighbors:
-                    temp_pred_label = 'nan'
-                    temp_pred_name = temp_pred_label
-                    temp_pred_occ = self.num_neighbors
-                else:
-                    cleaned_pred_list = list(np.asarray(temp_pred_list)[np.asarray(temp_pred_list) != 'nan'])
-                    temp_pred_label = stats.mode(cleaned_pred_list)[0][0]
-                    temp_pred_name = temp_pred_label
-                    temp_pred_occ = stats.mode(cleaned_pred_list)[1][0]
+                (temp_pred_label,
+                 temp_pred_name,
+                 temp_pred_occ) = self.kNN_classification(task_predictions=np.asarray(temp_pred_list),
+                                                          task_name=task_name,
+                                                          label2class_list=label2class_list)
 
                 pred_label_test.append(temp_pred_label)
                 pred_names_test.append(temp_pred_name)
@@ -1450,15 +1467,13 @@ class SilkRetriever:
                 temp_pred_occ = []
                 for task_ind in range(len(temp_pred_list[0])):
                     task_predictions = np.asarray(temp_pred_list)[:, task_ind]
-                    if list(task_predictions).count('nan') == self.num_neighbors:
-                        task_pred_label = 'nan'
-                        task_pred_name = task_pred_label
-                        task_pred_occ = self.num_neighbors
-                    else:
-                        cleaned_pred_list = list(task_predictions[task_predictions != 'nan'])
-                        task_pred_label = stats.mode(cleaned_pred_list)[0][0]
-                        task_pred_name = task_pred_label
-                        task_pred_occ = stats.mode(cleaned_pred_list)[1][0]
+                    task_name = relevant_variables[task_ind]
+                    class_list = np.asarray(label2class_list)[task_ind]
+                    (task_pred_label,
+                     task_pred_name,
+                     task_pred_occ) = self.kNN_classification(task_predictions=task_predictions,
+                                                              task_name=task_name,
+                                                              label2class_list=class_list)
                     temp_pred_label.append(task_pred_label)
                     temp_pred_name.append(task_pred_name)
                     temp_pred_occ.append(task_pred_occ)
@@ -1469,6 +1484,65 @@ class SilkRetriever:
                 pred_top_k.append(np.asarray(temp_pred_list))
 
         return pred_label_test, pred_names_test, pred_occ_test, pred_top_k
+
+    def kNN_classification(self, task_predictions, task_name, label2class_list):
+        if self.multiLabelsListOfVariables == None:
+            task_pred_label, task_pred_name, task_pred_occ = self.single_label_kNN_classification(task_predictions)
+        else:
+            if task_name not in self.multiLabelsListOfVariables:
+                task_pred_label, task_pred_name, task_pred_occ = self.single_label_kNN_classification(task_predictions)
+            else:
+                task_pred_label, task_pred_name, task_pred_occ = self.multi_label_kNN_classification(task_predictions,
+                                                                                                     label2class_list)
+        return task_pred_label, task_pred_name, task_pred_occ
+
+    def multi_label_kNN_classification(self, task_predictions, label2class_list):
+        if list(task_predictions).count('nan') == self.num_neighbors:
+            task_pred_label = 'nan'
+            task_pred_name = task_pred_label
+            task_pred_occ = self.num_neighbors
+        else:
+            # get on-off label for every class for all kNN
+            binary_pred_ind = []
+            list_class_names = np.asarray(label2class_list[1:])
+            for pred_label in task_predictions:
+                pr_binary = [1 if temp_class in pred_label.split("___") else 0 for temp_class in list_class_names]
+                binary_pred_ind.append(pr_binary)
+
+            # binary decision, whether class shall be selected
+            class_prediction = ""
+            for label_ind, pot_label in enumerate(list_class_names):
+                if stats.mode(np.asarray(binary_pred_ind)[:, label_ind])[0][0] == 1:
+                    class_prediction = class_prediction + pot_label + "___"
+
+            # combine all selected classes to a prediction
+            # handle nan-prediction case with "nan_OR_" + most probable class
+            if class_prediction == "":
+                task_pred_label = "nan_OR_" + stats.mode(task_predictions)[0][0]
+            else:
+                task_pred_label = class_prediction[0:-3]
+
+            cleaned_pred_list = list(task_predictions[task_predictions != 'nan'])
+            task_pred_occ = stats.mode(cleaned_pred_list)[1][0]
+
+        return task_pred_label, task_pred_label, task_pred_occ
+
+    def single_label_kNN_classification(self, task_predictions):
+        if list(task_predictions).count('nan') == self.num_neighbors:
+            task_pred_label = 'nan'
+            task_pred_name = task_pred_label
+            task_pred_occ = self.num_neighbors
+        else:
+            cleaned_pred_list = list(task_predictions[task_predictions != 'nan'])
+            task_pred_label = stats.mode(cleaned_pred_list)[0][0]
+            task_pred_name = task_pred_label
+            task_pred_occ = stats.mode(cleaned_pred_list)[1][0]
+            # TODO: handle this case:
+            # if task_pred_occ == int(len(cleaned_pred_list)/2):
+            #     print(cleaned_pred_list)
+            #     print(stats.mode(cleaned_pred_list))
+            #     print(task_pred_name)
+        return task_pred_label, task_pred_name, task_pred_occ
 
     def _write_knn_list_and_lut(self, query_image_list, tree_image_list, labels_target, pred_names_test, labels_tree,
                                 tree_indices_knn, tree_dist_knn, relevant_variables):

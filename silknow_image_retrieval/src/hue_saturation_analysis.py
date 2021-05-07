@@ -7,6 +7,7 @@ Created on Wed July 15 11:43:10 2020
 
 import sys
 import os
+import cv2
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -21,8 +22,8 @@ from sklearn import preprocessing
 
 # sys.path.insert(0, '../')
 # import SILKNOW_WP4_library as sn_func
+from . import SILKNOW_WP4_library as sn_func
 
-from . import SILKNOW_WP4_library as wp4lib
 
 def get_hue_and_saturation_image(im_path, im_name):
     """Loads and image and transforms it to HSV.
@@ -42,6 +43,22 @@ def get_hue_and_saturation_image(im_path, im_name):
             The saturation channel (values in [0, 1]) of the image in img_hsv.
     """
     img_rgb = imread(os.path.join(im_path, im_name))
+    if img_rgb.shape[0] == 224 and img_rgb.shape[1] == 224:
+        pass
+    else:
+        width, heigth, _ = img_rgb.shape
+
+        smaller_side = np.minimum(heigth, width)
+        scale_factor = 224. / smaller_side
+        # If Downscaling, apply gaussian blur
+        if scale_factor < 1.:
+            sigma = 1. / scale_factor
+            kernelsize = int(sigma * 6) + (1 - (int(sigma * 6) % 2))
+            img_rgb = cv2.GaussianBlur(img_rgb, (kernelsize, kernelsize), sigma)
+
+        img_rgb = cv2.resize(img_rgb, (int(heigth * scale_factor), int(width * scale_factor)),
+                             interpolation=cv2.INTER_CUBIC)
+
     img_hsv = rgb2hsv(img_rgb)
     img_hue = img_hsv[:, :, 0]
     img_sat = img_hsv[:, :, 1]

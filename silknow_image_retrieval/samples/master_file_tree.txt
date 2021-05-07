@@ -1,0 +1,8 @@
+collection_rules_1.txt
+collection_rules_2.txt
+collection_rules_3.txt
+collection_rules_4.txt
+collection_1.txt
+collection_2.txt
+collection_3.txt
+collection_4.txt

@@ -1,3 +1,0 @@
-****************FILES AND DIRECTORIES**************** 
-pred_gt_path; ./output_files/Default/
-result_path; ./output_files/Default/

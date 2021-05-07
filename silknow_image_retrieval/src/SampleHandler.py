@@ -7,7 +7,6 @@ import tensorflow as tf
 # import SILKNOW_WP4_library as wp4lib
 from . import SILKNOW_WP4_library as wp4lib
 
-
 class SampleHandler:
     """Class for handling the usage of samples."""
 

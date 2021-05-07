@@ -318,7 +318,7 @@ class SimilarityLosses():
         margin_colour = 1. - self.norm_cross_corr
 
         # colour loss
-        colour_loss = tf.maximum(0., pairwise_dist - margin_colour)
+        colour_loss = tf.maximum(0., tf.math.abs(pairwise_dist - margin_colour))
 
         # consider only hardest pairs
         # TODO: Ckeck mining! ...and mean computation

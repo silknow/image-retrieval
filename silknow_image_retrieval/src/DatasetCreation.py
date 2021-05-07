@@ -8,7 +8,6 @@ import cv2
 import collections
 import xlsxwriter
 
-# TODO: split_check for all images of one object in one collection!!!!!
 """
 Important Note:
 Function calls which are marked with "#FIXED VARIABLES!" expect a fixed set of relevant variables.
@@ -20,6 +19,9 @@ def createDatasetForCombinedSimilarityLoss(rawCSVFile, imageSaveDirectory, maste
                          retainCollections, minNumLabelsPerSample,
                          flagDownloadImages, flagRescaleImages, fabricListFile=None, flagRuleDataset=False,
                          masterfileRules=None, flagColourAugmentDataset=False,multiLabelsListOfVariables=None):
+
+    multiLabelsListOfVariables = translate_mutliLabelList(multiLabelsListOfVariables)
+
     # Create standard dataset
     # -> collection_1.txt - collection_5.txt
     createDataset(rawCSVFile, imageSaveDirectory, masterfileDirectory, minNumSamplesPerClass,
@@ -41,6 +43,23 @@ def createDatasetForCombinedSimilarityLoss(rawCSVFile, imageSaveDirectory, maste
     # -> collection_colour_augment_1.txt - collection_colour_augment_5.txt
     if flagColourAugmentDataset:
         createDatasetColourAugment(masterfileDirectory, rawCSVFile, imageSaveDirectory, flagRuleDataset)
+
+
+def translate_mutliLabelList(multiLabelsListOfVariables):
+    if multiLabelsListOfVariables is not None:
+        temp_new_list = []
+        if "material" in multiLabelsListOfVariables:
+            temp_new_list.append("material_group")
+        if "place" in multiLabelsListOfVariables:
+            temp_new_list.append("place_country_code")
+        if "timespan" in multiLabelsListOfVariables:
+            temp_new_list.append("time_label")
+        if "technique" in multiLabelsListOfVariables:
+            temp_new_list.append("technique_group")
+        if "depiction" in multiLabelsListOfVariables:
+            temp_new_list.append("depict_group")
+        multiLabelsListOfVariables = temp_new_list
+    return multiLabelsListOfVariables
 
 
 def createDatasetColourAugment(masterfileDirectory, rawCSVFile, imageSaveDirectory, flagRuleDataset):
@@ -89,12 +108,13 @@ def createDatasetSimilarityRules(rawCSVFile, imageSaveDirectory, masterfileDirec
                                  minNumSamplesPerClass, retainCollections, minNumLabelsPerSample,
                                  flagDownloadImages, flagRescaleImages, master_file_path_similar,
                                  masterfileRules, fabricListFile, CollectionFileBaseName, multiLabelsListOfVariables):
-    dataframe = get_df_for_similarity_loss(rawCSVFile, imageSaveDirectory, masterfileDirectory, minNumSamplesPerClass,
+    dataframe = get_df_for_semantic_similarity(rawCSVFile, imageSaveDirectory, masterfileDirectory, minNumSamplesPerClass,
                                            retainCollections, minNumLabelsPerSample, flagDownloadImages,
                                            flagRescaleImages,
                                            fabricListFile, multiLabelsListOfVariables)
 
     similar_dict, sim_obj_list = get_uris_of_rule_lists(master_file_path_similar, masterfileRules)
+    sim_obj_list = add_uri_ob_multi_img_obj(sim_obj_list, rawCSVFile)
     obj_2_be_added = find_obj_uri_not_in_dataset(sim_obj_list, dataframe)
     df_to_be_added = get_df_of_obj_only_in_rules(rawCSVFile, obj_2_be_added, multiLabelsListOfVariables)
     for col in df_to_be_added.columns:
@@ -113,19 +133,19 @@ def createDatasetSimilarityRules(rawCSVFile, imageSaveDirectory, masterfileDirec
     writeCollectionFiles(dataChunkList, masterfileDirectory, imageSaveDirectory, CollectionFileBaseName)
 
 
-def get_df_for_similarity_loss(rawCSVFile, imageSaveDirectory, masterfileDirectory, minNumSamplesPerClass,
+def get_df_for_semantic_similarity(rawCSVFile, imageSaveDirectory, masterfileDirectory, minNumSamplesPerClass,
                                retainCollections, minNumLabelsPerSample, flagDownloadImages, flagRescaleImages,
                                fabricListFile, multiLabelsListOfVariables):
-    preprocessRawCSVFile(rawCSVFile=rawCSVFile,
-                         imageSaveDirectory=imageSaveDirectory,
-                         masterfileDirectory=masterfileDirectory,
-                         minNumSamplesPerClass=minNumSamplesPerClass,
-                         retainCollections=retainCollections,
-                         minNumLabelsPerSample=minNumLabelsPerSample,
-                         flagDownloadImages=flagDownloadImages,
-                         flagRescaleImages=flagRescaleImages,
-                         fabricListFile = fabricListFile,
-                         multiLabelsListOfVariables = multiLabelsListOfVariables)
+    # preprocessRawCSVFile(rawCSVFile=rawCSVFile,
+    #                      imageSaveDirectory=imageSaveDirectory,
+    #                      masterfileDirectory=masterfileDirectory,
+    #                      minNumSamplesPerClass=minNumSamplesPerClass,
+    #                      retainCollections=retainCollections,
+    #                      minNumLabelsPerSample=minNumLabelsPerSample,
+    #                      flagDownloadImages=flagDownloadImages,
+    #                      flagRescaleImages=flagRescaleImages,
+    #                      fabricListFile = fabricListFile,
+    #                      multiLabelsListOfVariables = multiLabelsListOfVariables)
 
     dataframeFile = os.path.join(masterfileDirectory, "image_data.csv")
     dataframe = pd.read_csv(dataframeFile).set_index("ID")
@@ -144,8 +164,15 @@ def get_uris_of_rule_lists(master_file_path, master_file_similar):
             rule_list.append(obj_uri)
             rule_obj_list.append(obj_uri)
         rule_dict[rule_file.strip()] = rule_list
+
     return rule_dict, np.unique(rule_obj_list)
 
+def add_uri_ob_multi_img_obj(sim_obj_list, rawCSVFile):
+    dataframe = pd.read_csv(rawCSVFile)
+    dataframe = formatFieldStrings(dataframe, None).fillna('nan')  # FIXED VARIABLES!
+    df_with_multi_img_obj_only = dataframe.loc[np.array(list(map(len, dataframe.img.values))) > 1]
+    new_sim_obj_list = set.union(set(sim_obj_list), set(list(df_with_multi_img_obj_only["obj"])))
+    return list(new_sim_obj_list)
 
 def find_obj_uri_not_in_dataset(obj_list, dataset_df):
     obj_2_be_added = []
@@ -211,6 +238,9 @@ def createDataset(rawCSVFile, imageSaveDirectory, masterfileDirectory, minNumSam
                 "label_1___label_2___label_3". Such merged labels will be handeled in subsequent function of the image
                 processing module to perform multi-label classification/semantic similarity.
         """
+
+    multiLabelsListOfVariables = translate_mutliLabelList(multiLabelsListOfVariables)
+
     preprocessRawCSVFile(rawCSVFile=rawCSVFile,
                          imageSaveDirectory=imageSaveDirectory,
                          masterfileDirectory=masterfileDirectory,
@@ -273,12 +303,8 @@ def preprocessRawCSVFile(rawCSVFile, imageSaveDirectory, masterfileDirectory, mi
     dataframe = pd.read_csv(rawCSVFile)
     museum_overview = np.unique(dataframe.museum)
     print("museums: ", museum_overview)
-    # material_overview = np.unique(dataframe.material_group)
-    # vgl = material_overview[0]==material_overview[4]
     dataframe = formatFieldStrings(dataframe, multiLabelsListOfVariables).fillna('nan')  # FIXED VARIABLES!
-    material_overview = np.unique(dataframe.material_group)
     dataframe = convertToImageBasedDataframe(dataframe)  # FIXED VARIABLES!
-
     dataframe = discardImagesUsedInMultipleObjects(dataframe)
     dataframe = filterByMinNumSamplesPerClass(dataframe, minNumSamplesPerClass)  # FIXED VARIABLES!
     dataframe = filterByFabricsAndNonfabrics(dataframe, masterfileDirectory, retainCollections, fabricListFile)
@@ -434,7 +460,7 @@ def convertToImageBasedDataframe(dataframe):
             if row.category_group == "fabrics":
                 totallist += varlist
                 counter_img += len(row.deeplink)
-
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         # else:
         #     # if len(row.category_group) != len(row.deeplink):
         #     #     error_file.write(row.obj + "\n")
@@ -557,11 +583,12 @@ def rescaleImages(imageSaveDirectory):
         os.makedirs(imgpath_save)
 
     imglist = os.listdir(imgpath_load)
-    print(len(imglist))
+    print("\nTotal number of images: ", len(imglist))
 
     # for img_file in tqdm(imglist):
     deadlist_load = []
     deadlist_scale = []
+    print("\nIterating over images (download): ")
     for img_file in tqdm(imglist, total=len(imglist)):
 
         # Skip images that are already scaled
@@ -601,11 +628,11 @@ def rescaleImages(imageSaveDirectory):
             deadlist_scale += [img_file]
 
     if len(deadlist_load) > 0:
-        print("The following images could not be opened:")
+        print("\nThe following images could not be opened: ")
         for deadload in deadlist_load:
             print(deadload)
     if len(deadlist_scale) > 0:
-        print("The following images could not be scaled:")
+        print("\nThe following images could not be scaled: ")
         for _ in deadlist_scale:
             print(deadlist_scale)
 
@@ -615,14 +642,9 @@ def filterByExistingImages(dataframe, imageSaveDirectory):
     onlyfiles = [f for f in os.listdir(mypath) if os.path.isfile(os.path.join(mypath, f))]
     onlyfiles = list(dict.fromkeys(onlyfiles))
     intersection_set = list(set.intersection(set(onlyfiles), set(list(dataframe["ID"]))))
-    # print(len(set(list(dataframe["ID"]))))
-    # print(len(set(onlyfiles)))
-    # print(len(intersection_set))
     missing_list = [missing for missing in list(dataframe["ID"]) if missing not in onlyfiles]
-    print(len(missing_list))
     missing_df = pd.DataFrame({"images": missing_list})
     missing_df.to_csv("missing_images.csv")
-    # print("\n\n")
     dataframe = dataframe.set_index("ID").loc[[f for f in intersection_set]]
 
     return dataframe
