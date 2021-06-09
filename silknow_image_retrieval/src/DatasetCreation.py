@@ -307,7 +307,7 @@ def preprocessRawCSVFile(rawCSVFile, imageSaveDirectory, masterfileDirectory, mi
     dataframe = convertToImageBasedDataframe(dataframe)  # FIXED VARIABLES!
     dataframe = discardImagesUsedInMultipleObjects(dataframe)
     dataframe = filterByMinNumSamplesPerClass(dataframe, minNumSamplesPerClass)  # FIXED VARIABLES!
-    dataframe = filterByFabricsAndNonfabrics(dataframe, masterfileDirectory, retainCollections, fabricListFile)
+    # dataframe = filterByFabricsAndNonfabrics(dataframe, masterfileDirectory, retainCollections, fabricListFile)
     dataframe = filterByMinNumLabelsPerSample(dataframe, minNumLabelsPerSample)  # FIXED VARIABLES!
 
     if flagDownloadImages:

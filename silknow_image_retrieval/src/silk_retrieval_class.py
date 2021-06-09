@@ -13,7 +13,6 @@ import math
 import matplotlib.pyplot as plt
 import cv2
 import collections
-# import timeit
 
 from tqdm import tqdm
 from sklearn.neighbors import KDTree
@@ -797,11 +796,19 @@ class SilkRetriever:
         if not os.path.exists(os.path.join(self.pred_gt_dir, r"")):
             os.makedirs(os.path.join(self.pred_gt_dir, r""))
 
+        start_time=time.time()
+
         # Load pre-trained network
         model = ImportGraph(self.model_dir)
 
+        model_time = time.time()
+        print("load model:", model_time-start_time)
+
         # Load Tree and labels
         (tree, labels_tree, data_dict_train, relevant_variables, label2class_list) = self.load_kd_tree()
+
+        tree_time = time.time()
+        print("load tree:", tree_time - model_time)
 
         # Load query images
         if self.bool_labeled_input:
@@ -813,8 +820,16 @@ class SilkRetriever:
         # Calculate descriptors
         features = self._get_descriptors(model=model, image_list=image_list)
 
+        feature_time = time.time()
+        print("load image and calc descriptor:", feature_time - tree_time)
+
         # Perform image retrieval
-        dist, ind = tree.query(np.squeeze(features), k=self.num_neighbors)
+        if len(features) == 1:
+            dist, ind = tree.query(features, k=self.num_neighbors)
+        else:
+            dist, ind = tree.query(np.squeeze(features), k=self.num_neighbors)
+        knn_time = time.time()
+        print("get knn:", knn_time - feature_time)
 
         # Get labels of knn (pred_top_k) and knn-classification (actual prediction)
         (pred_label_test,
@@ -824,6 +839,9 @@ class SilkRetriever:
                                             tree_index_acc_labels=ind,
                                             relevant_variables=relevant_variables,
                                             label2class_list=label2class_list)
+        label_time = time.time()
+        print("knn classification:", label_time - knn_time)
+
 
         # Save results
         self._write_knn_list_and_lut(query_image_list=image_list, tree_image_list=list(data_dict_train.keys()),
@@ -835,6 +853,9 @@ class SilkRetriever:
                        "Predictions": np.asarray(pred_names_test),  # indices der Klassen 0, 1, ...
                        "label2class_list": np.asarray(label2class_list)}  # konkrete Namen
             np.savez(self.pred_gt_dir + r"/pred_gt.npz", pred_gt)
+
+        save_time = time.time()
+        print("save all:", save_time - label_time)
 
             # TODO: raus für D4.5
             # TODO: D4.6: Aufschlüsseln nach Variable und Klasse
