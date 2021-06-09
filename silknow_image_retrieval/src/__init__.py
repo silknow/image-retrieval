@@ -1,1 +1,1 @@
-from ..src.silk_retrieval_functions import *
+from ..src.silk_retrieval_func import *
