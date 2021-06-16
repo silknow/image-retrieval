@@ -25,12 +25,6 @@ from tensorflow.python.util import deprecation
 deprecation._PRINT_DEPRECATION_WARNINGS = False
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # or any {'0', '1', '2'}
 
-# sys.path.insert(0, '../')
-# import SILKNOW_WP4_library as wp4lib
-# import hue_saturation_analysis as hue_sat
-# from SampleHandler import SampleHandler
-# from SimilarityLosses import SimilarityLosses
-
 from . import SILKNOW_WP4_library as wp4lib
 from . import SampleHandler
 from . import SimilarityLosses
@@ -61,20 +55,24 @@ class ImportGraph():
             Object of class ImportGraph
         """
         # Create local graph and use it in the session
-        self.graph = tf.Graph()
-        self.sess = tf.compat.v1.Session(graph=self.graph)
-        with self.graph.as_default():
-            # Import saved model from location 'loc' into local graph
-            saver = tf.train.import_meta_graph(loc + 'model.ckpt' + '.meta',
-                                               clear_devices=True)
-            """EXPERIMENTELL"""
-            init = tf.compat.v1.global_variables_initializer()
-            self.sess.run(init)
-            #            self.sess.run(tf.local_variables_initializer())
-            """EXPERIMENTELL"""
-            saver.restore(self.sess, loc + 'model.ckpt')
-            # self.output_features = self.graph.get_operation_by_name('CustomLayers/output_features').outputs[0]
-            self.output_features = self.graph.get_operation_by_name('normalized_descriptor').outputs[0]
+        self.sess = tf.compat.v1.Session()
+        signature_key = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+        input_key = 'x_input'
+        input_key_2 = 'x2_input'
+        output_key = 'y_output'
+
+        meta_graph_def = tf.saved_model.loader.load(
+            self.sess,
+            [tf.saved_model.SERVING],
+            loc)
+        signature = meta_graph_def.signature_def
+        input_tensor_name = signature[signature_key].inputs[input_key].name
+        input2_tensor_name = signature[signature_key].inputs[input_key_2].name
+        output_tensor_name = signature[signature_key].outputs[output_key].name
+
+        self.raw_input_tensor = self.sess.graph.get_tensor_by_name(input_tensor_name)
+        self.input_tensor = self.sess.graph.get_tensor_by_name(input2_tensor_name)
+        self.output_tensor = self.sess.graph.get_tensor_by_name(output_tensor_name)
 
     def run(self, data):
         """ Running the activation operation previously imported.
@@ -88,13 +86,13 @@ class ImportGraph():
                 The result of the specified layer (output_name).
         """
         # The 'x' corresponds to name of input placeholder
-        feed_dict_raw = {"DecodeJPGInput:0": data}
-        decoded_img_op = self.graph.get_operation_by_name('Squeeze').outputs[0]
+        feed_dict_raw = {self.raw_input_tensor: data}
+        decoded_img_op = self.sess.graph.get_operation_by_name('Squeeze').outputs[0]
         decoded_img = self.sess.run(decoded_img_op, feed_dict=feed_dict_raw)
         decoded_img = np.expand_dims(np.asarray(decoded_img), 0)
 
-        feed_dict_decoded = {"ModuleLayers/input_img:0": decoded_img}
-        output = self.sess.run(self.output_features, feed_dict=feed_dict_decoded)
+        feed_dict_decoded = {self.input_tensor: decoded_img}
+        output = self.sess.run(self.output_tensor, feed_dict=feed_dict_decoded)
         output = np.squeeze(output)
         return output
 
@@ -662,7 +660,48 @@ class SilkRetriever:
                             train_saver.save(sess, self.model_dir + '/' + 'model.ckpt')
                             best_validation_loss = val_loss_sim
 
+                self.save_final_model()
+
         self._write_train_parameters_to_configuration_file()
+
+    def save_final_model(self):
+        save_graph = tf.Graph()
+        save_sess = tf.compat.v1.Session(graph=save_graph)
+        with save_graph.as_default():
+            # load best performing weights
+            saver = tf.compat.v1.train.import_meta_graph(self.model_dir + 'model.ckpt' + '.meta',
+                                               clear_devices=True)
+            init = tf.compat.v1.global_variables_initializer()
+            save_sess.run(init)
+            saver.restore(save_sess, self.model_dir + 'model.ckpt')
+
+            # prepare model_dir
+            dir = self.model_dir
+            for f in os.listdir(dir):
+                os.remove(os.path.join(dir, f))
+
+            # save whole model to model_dir
+            x = save_sess.graph.get_tensor_by_name("DecodeJPGInput:0")
+            x2 = save_sess.graph.get_tensor_by_name("ModuleLayers/input_img:0")
+            y = save_sess.graph.get_operation_by_name('normalized_descriptor').outputs[0]
+            tensor_info_x = tf.saved_model.utils.build_tensor_info(x)
+            tensor_info_x2 = tf.saved_model.utils.build_tensor_info(x2)
+            tensor_info_y = tf.saved_model.utils.build_tensor_info(y)
+            builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(self.model_dir)
+            prediction_signature = (
+                tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+                    inputs={'x_input': tensor_info_x,
+                            'x2_input': tensor_info_x2},
+                    outputs={'y_output': tensor_info_y},
+                    method_name=tf.saved_model.PREDICT_METHOD_NAME))
+            builder.add_meta_graph_and_variables(
+                save_sess, [tf.saved_model.SERVING],
+                signature_def_map={
+                    tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                        prediction_signature
+                },
+            )
+            builder.save()
 
     def check_valid_inputs(self):
         assert np.sum(self.variable_weights)== 1., "The sum of weights for the variables has to be one."
