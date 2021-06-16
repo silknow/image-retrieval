@@ -30,7 +30,8 @@ all_reqs = ['#Dev/Deployment',
 			'sklearn',
             'scipy',
             'xlsxwriter',
-            'scikit-image']
+            'scikit-image',
+            'scikit_learn==0.22.2.post1']
 
 install_requires = [x.strip() for x in all_reqs if 'git+' not in x]
 dependency_links = [x.strip().replace('git+', '') for x in all_reqs if x.startswith('git+')]
