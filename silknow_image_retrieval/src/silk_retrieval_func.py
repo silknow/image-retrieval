@@ -311,6 +311,220 @@ def build_kDTree_parameter(model_dir,
     sr.build_kd_tree()
 
 
+def preload_cnn_model(model_dir):
+    r"""Retrieves the k nearest neighbours from a given kdTree.
+
+    :Arguments\::
+        :model_dir (*string*):
+            Path (without filename) to a folder containing a pre-trained network. Only one pre-trained model should
+            be stored in that model folder.
+
+    :Returns\::
+        :loaded_model (*ImportGraph instance*):
+            A loaded CNN model for image retrieval as an instance of the class *ImportGraph* in
+            *silk_retrieval_class.py*. The *model.sess.graph* has the *tf.saved_model* format. An image descriptor
+            can be calculated via *model.run(image)*, where *image* is a string with the path and the image file
+            name of the image for which a descriptor shall be calculated.
+
+    """
+    loaded_model = src.ImportGraph(model_dir)
+    return loaded_model
+
+
+def preload_kd_tree(tree_dir):
+    r"""Builds a kD-Tree using a pre-trained network.
+
+    :Arguments\::
+        :tree_dir (*string*):
+            Path to where the kD-tree "kdtree.npz" will be saved. It's a dictionary containing
+            the following key value pairs:
+                - Tree: The kD-tree accroding to the python toolbox sklearn.neighbors.
+                - Labels: The class label indices of the data whose feature vectors are stored in the tree nodes.
+                - DictTrain: The image data including their labels that was used to build the tree.
+                - relevant_variables: A list of the image data's labels that shall be considered.
+                - label2class_list: A list assigning the label indices to label names.
+
+    :Returns\::
+        :tree (*kD-tree*):
+            The kD-tree accroding to the python toolbox sklearn.neighbors.
+        :labels_tree (*list*):
+            Each element contains a list with the labels of one semantic variable.
+        :data_dict_train (*dict*):
+            The image data including their labels that was used to build the tree.
+        :relevant_variables (*list*):
+            A list of the semantic variables that have a class label sotred in the kd-tree.
+        :label2class_list (*list*):
+            A list assigning the label indices to label names.
+
+    """
+    sr = src.SilkRetriever()
+
+    # set parameters
+    sr.tree_dir = tree_dir
+
+    # Load Tree and labels
+    (tree, labels_tree, data_dict_train, relevant_variables, label2class_list) = sr.load_kd_tree()
+
+    return tree, labels_tree, data_dict_train, relevant_variables, label2class_list
+
+
+def get_kNN_from_preloaded_cnn_and_tree(tree, labels_tree, data_dict_train, relevant_variables, label2class_list,
+                                        master_file_retrieval,
+                                        master_dir_retrieval,
+                                        model,
+                                        pred_gt_dir,
+                                        num_neighbors=10,
+                                        bool_labeled_input=False,
+                                        multi_label_variables=["material"]):
+    r"""Retrieves the k nearest neighbours from a given kdTree.
+
+    :Arguments\::
+        :tree (*kD-tree*):
+            The kD-tree accroding to the python toolbox sklearn.neighbors.
+        :labels_tree (*list*):
+            Each element contains a list with the labels of one semantic variable.
+        :data_dict_train (*dict*):
+            The image data including their labels that was used to build the tree.
+        :relevant_variables (*list*):
+            A list of the semantic variables that have a class label sotred in the kd-tree.
+        :label2class_list (*list*):
+            A list assigning the label indices to label names.
+        :master_file_retrieval (*string*)\::
+            Name of the master file that lists the collection files with the available samples. This file has to
+            exist in directory master_dir_retrieval.
+        :master_dir_retrieval (*string*)\::
+            Path to the directory containing the master file master_file_retrieval.
+        :bool_labeled_input (*bool*)\::
+            An indicator whether annotations are provided in the collection files that are listed in the master file
+            for the input samples. Thus, this parameter defines the use case for the image retrieval.
+            If bool_labeled_input = False, the query images are assumed to be unlabeled, as it is the standard
+            situation in the SILKNOW use case. Otherwise, the search images are assumed to have class labels, as
+            required for images to be used for evaluation.
+        :model (*ImportGraph instance*):
+            A loaded CNN model for image retrieval as an instance of the class *ImportGraph* in
+            *silk_retrieval_class.py*. The *model.sess.graph* has the *tf.saved_model* format. An image descriptor
+            can be calculated via *model.run(image)*, where *image* is a string with the path and the image file
+            name of the image for which a descriptor shall be calculated.
+        :num_neighbors (*int*)\::
+            Number of nearest neighbours that are retrieved from a kD-Tree.
+        :pred_gt_dir (*string*):
+            Path to where the results will be saved.
+            In case of provided labeled data it's a dictionary "pred_gt.npz" containing the following key value pairs:
+                - Groundtruth: The label indicies of the provided data.
+                - Predictions: The label indices of the found k nearest neighbours.
+                - label2class_list: A list assigning the label indices to label names.
+            as well as text file "knn_list.txt" containing the predicted and ground truth labels.
+            In case of provided unlabeled data it's a text file "knn_list.txt" containing only the predictions.
+            Furthermore, a CSV-file "kNN_LUT.csv" is created in any case containing the values:
+                - input_image_name: The filename of the input image (including the path).
+                - kNN_image_names: The full image names of the kNN.
+                - kNN_kg_object_uri: The knowledge graph object URIs of the kNNs.
+                - kNN_kD_index: The indices of the kNN of the input image in the kD-tree.
+                - kNN_descriptor_dist: The distances of the descriptors of the kNN to the descriptor of the input image.
+        :multi_label_variables (*list of strings*)\::
+            A list of variable names of the five semantic variables (relevant_variables) that have multiple class
+            labels per variable. A complete list would be ["material", "place", "timespan", "technique", "depiction"].
+            A multi-label kNN-classification is realised for the list of variables indicated by this parameter instead
+            of the default single-label kNN-classification.
+
+    :Returns\::
+        No returns. The result is stored automatically in the directory given in
+        the variable pred_gt_dir.
+    """
+
+    sr = src.SilkRetriever()
+
+    # set parameters
+    sr.master_file_retrieval = master_file_retrieval
+    sr.master_dir_retrieval = master_dir_retrieval
+    sr.pred_gt_dir = pred_gt_dir
+    sr.num_neighbors = num_neighbors
+    sr.bool_labeled_input = bool_labeled_input
+    sr.multiLabelsListOfVariables = multi_label_variables
+
+    # call main function
+    sr.get_knn_preloaded_cnn_and_tree(model,
+                                      tree, labels_tree, data_dict_train, relevant_variables, label2class_list)
+
+
+def get_kNN_from_preloaded_cnn(tree_dir,
+                               master_file_retrieval,
+                               master_dir_retrieval,
+                               model,
+                               pred_gt_dir,
+                               num_neighbors=10,
+                               bool_labeled_input=False,
+                               multi_label_variables=["material"]):
+    r"""Retrieves the k nearest neighbours from a given kdTree.
+
+    :Arguments\::
+        :tree_dir (*string*)\::
+            Path to where the kD-tree "kdtree.npz" was saved. It's a dictionary containing
+            the following key value pairs:
+                - Tree: The kD-tree accroding to the python toolbox sklearn.neighbors.
+                - Labels: The class label indices of the data whose feature vectors are stored in the tree nodes.
+                - DictTrain: The image data including their labels that was used to build the tree.
+                - relevant_variables: A list of the image data's labels that shall be considered.
+                - label2class_list: A list assigning the label indices to label names.
+        :master_file_retrieval (*string*)\::
+            Name of the master file that lists the collection files with the available samples. This file has to
+            exist in directory master_dir_retrieval.
+        :master_dir_retrieval (*string*)\::
+            Path to the directory containing the master file master_file_retrieval.
+        :bool_labeled_input (*bool*)\::
+            An indicator whether annotations are provided in the collection files that are listed in the master file
+            for the input samples. Thus, this parameter defines the use case for the image retrieval.
+            If bool_labeled_input = False, the query images are assumed to be unlabeled, as it is the standard
+            situation in the SILKNOW use case. Otherwise, the search images are assumed to have class labels, as
+            required for images to be used for evaluation.
+        :model (*ImportGraph instance*):
+            A loaded CNN model for image retrieval as an instance of the class *ImportGraph* in
+            *silk_retrieval_class.py*. The *model.sess.graph* has the *tf.saved_model* format. An image descriptor
+            can be calculated via *model.run(image)*, where *image* is a string with the path and the image file
+            name of the image for which a descriptor shall be calculated.
+        :num_neighbors (*int*)\::
+            Number of nearest neighbours that are retrieved from a kD-Tree.
+        :pred_gt_dir (*string*):
+            Path to where the results will be saved.
+            In case of provided labeled data it's a dictionary "pred_gt.npz" containing the following key value pairs:
+                - Groundtruth: The label indicies of the provided data.
+                - Predictions: The label indices of the found k nearest neighbours.
+                - label2class_list: A list assigning the label indices to label names.
+            as well as text file "knn_list.txt" containing the predicted and ground truth labels.
+            In case of provided unlabeled data it's a text file "knn_list.txt" containing only the predictions.
+            Furthermore, a CSV-file "kNN_LUT.csv" is created in any case containing the values:
+                - input_image_name: The filename of the input image (including the path).
+                - kNN_image_names: The full image names of the kNN.
+                - kNN_kg_object_uri: The knowledge graph object URIs of the kNNs.
+                - kNN_kD_index: The indices of the kNN of the input image in the kD-tree.
+                - kNN_descriptor_dist: The distances of the descriptors of the kNN to the descriptor of the input image.
+        :multi_label_variables (*list of strings*)\::
+            A list of variable names of the five semantic variables (relevant_variables) that have multiple class
+            labels per variable. A complete list would be ["material", "place", "timespan", "technique", "depiction"].
+            A multi-label kNN-classification is realised for the list of variables indicated by this parameter instead
+            of the default single-label kNN-classification.
+
+    :Returns\::
+        No returns. The result is stored automatically in the directory given in
+        the variable pred_gt_dir.
+    """
+
+    sr = src.SilkRetriever()
+
+    # set parameters
+    sr.tree_dir = tree_dir
+    sr.master_file_retrieval = master_file_retrieval
+    sr.master_dir_retrieval = master_dir_retrieval
+    sr.pred_gt_dir = pred_gt_dir
+    sr.num_neighbors = num_neighbors
+    sr.bool_labeled_input = bool_labeled_input
+    sr.multiLabelsListOfVariables = multi_label_variables
+
+    # call main function
+    sr.get_knn_preloaded_cnn(model)
+
+
+
 def get_kNN_parameter(tree_dir,
                       master_file_retrieval,
                       master_dir_retrieval,

@@ -908,6 +908,133 @@ class SilkRetriever:
 
         return pred_top_k, labels_target, label2class_list
 
+    def get_knn_preloaded_cnn(self, model):
+        if not os.path.exists(os.path.join(self.pred_gt_dir, r"")):
+            os.makedirs(os.path.join(self.pred_gt_dir, r""))
+
+        start_time=time.time()
+
+        # Load Tree and labels
+        (tree, labels_tree, data_dict_train, relevant_variables, label2class_list) = self.load_kd_tree()
+
+        tree_time = time.time()
+        print("load tree:", tree_time - start_time)
+
+        # Load query images
+        if self.bool_labeled_input:
+            image_list, labels_target = self._get_query_image_list(relevant_variables=relevant_variables)
+        else:
+            image_list = self._get_query_image_list(relevant_variables=relevant_variables)
+            labels_target = []
+
+        # Calculate descriptors
+        features = self._get_descriptors(model=model, image_list=image_list)
+
+        feature_time = time.time()
+        print("load image and calc descriptor:", feature_time - tree_time)
+
+        # Perform image retrieval
+        if len(features) == 1:
+            dist, ind = tree.query(features, k=self.num_neighbors)
+        else:
+            dist, ind = tree.query(np.squeeze(features), k=self.num_neighbors)
+        knn_time = time.time()
+        print("get knn:", knn_time - feature_time)
+
+        # Get labels of knn (pred_top_k) and knn-classification (actual prediction)
+        (pred_label_test,
+         pred_names_test,
+         pred_occ_test,
+         pred_top_k) = self._get_knn_labels(labels_tree=labels_tree,
+                                            tree_index_acc_labels=ind,
+                                            relevant_variables=relevant_variables,
+                                            label2class_list=label2class_list)
+        label_time = time.time()
+        print("knn classification:", label_time - knn_time)
+
+
+        # Save results
+        self._write_knn_list_and_lut(query_image_list=image_list, tree_image_list=list(data_dict_train.keys()),
+                                     labels_target=labels_target, pred_names_test=pred_names_test,
+                                     labels_tree=labels_tree, tree_indices_knn=ind,
+                                     tree_dist_knn=dist, relevant_variables=relevant_variables)
+        if self.bool_labeled_input:
+            pred_gt = {"Groundtruth": np.asarray(labels_target),  # indices der Klassen 0, 1, ...
+                       "Predictions": np.asarray(pred_names_test),  # indices der Klassen 0, 1, ...
+                       "label2class_list": np.asarray(label2class_list)}  # konkrete Namen
+            np.savez(self.pred_gt_dir + r"/pred_gt.npz", pred_gt)
+
+        save_time = time.time()
+        print("save all:", save_time - label_time)
+
+            # TODO: raus für D4.5
+            # TODO: D4.6: Aufschlüsseln nach Variable und Klasse
+            # TODO: D4.6: neuerliche Evaluierung raus, wird ja zu Standardeval
+            # For the estimation of a suitable k
+            # get_top_k_statistics(pred_top_k,
+            #                      labels_target,
+            #                      num_neighbors,
+            #                      savepath,
+            #                      label2class_list)
+
+        return pred_top_k, labels_target, label2class_list
+
+    def get_knn_preloaded_cnn_and_tree(self, model,
+                         tree, labels_tree, data_dict_train, relevant_variables, label2class_list):
+        if not os.path.exists(os.path.join(self.pred_gt_dir, r"")):
+            os.makedirs(os.path.join(self.pred_gt_dir, r""))
+
+        start_time=time.time()
+
+        # Load query images
+        if self.bool_labeled_input:
+            image_list, labels_target = self._get_query_image_list(relevant_variables=relevant_variables)
+        else:
+            image_list = self._get_query_image_list(relevant_variables=relevant_variables)
+            labels_target = []
+
+        # Calculate descriptors
+        features = self._get_descriptors(model=model, image_list=image_list)
+
+        feature_time = time.time()
+        print("load image and calc descriptor:", feature_time - start_time)
+
+        # Perform image retrieval
+        if len(features) == 1:
+            dist, ind = tree.query(features, k=self.num_neighbors)
+        else:
+            dist, ind = tree.query(np.squeeze(features), k=self.num_neighbors)
+        knn_time = time.time()
+        print("get knn:", knn_time - feature_time)
+
+        # Get labels of knn (pred_top_k) and knn-classification (actual prediction)
+        (pred_label_test,
+         pred_names_test,
+         pred_occ_test,
+         pred_top_k) = self._get_knn_labels(labels_tree=labels_tree,
+                                            tree_index_acc_labels=ind,
+                                            relevant_variables=relevant_variables,
+                                            label2class_list=label2class_list)
+        label_time = time.time()
+        print("knn classification:", label_time - knn_time)
+
+
+        # Save results
+        self._write_knn_list_and_lut(query_image_list=image_list, tree_image_list=list(data_dict_train.keys()),
+                                     labels_target=labels_target, pred_names_test=pred_names_test,
+                                     labels_tree=labels_tree, tree_indices_knn=ind,
+                                     tree_dist_knn=dist, relevant_variables=relevant_variables)
+        if self.bool_labeled_input:
+            pred_gt = {"Groundtruth": np.asarray(labels_target),  # indices der Klassen 0, 1, ...
+                       "Predictions": np.asarray(pred_names_test),  # indices der Klassen 0, 1, ...
+                       "label2class_list": np.asarray(label2class_list)}  # konkrete Namen
+            np.savez(self.pred_gt_dir + r"/pred_gt.npz", pred_gt)
+
+        save_time = time.time()
+        print("save all:", save_time - label_time)
+
+        return pred_top_k, labels_target, label2class_list
+
     def evaluate_model(self):
         if not os.path.exists(os.path.join(self.eval_result_dir, r"")):
             os.makedirs(os.path.join(self.eval_result_dir, r""))
